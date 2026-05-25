@@ -64,7 +64,7 @@
     <!-- 模块5: 用户评价 -->
     <div class="section" v-if="game.user_reviews?.length">
       <h2 class="section-title"><span class="title-bar"></span> 玩家评测</h2>
-      <div class="user-reviews-grid">
+      <div class="review-columns">
         <div v-for="(rv, i) in game.user_reviews" :key="i" class="review-card">
           <div class="review-card-head">
             <span class="review-vote">{{ rv.voted_up ? '👍' : '👎' }}</span>
@@ -82,7 +82,13 @@
         <router-link v-for="sg in game.similar_games" :key="sg.id"
           :to="'/game/' + sg.id" class="similar-card">
           <div class="similar-img-wrap">
-            <img :src="sg.image_url" :alt="sg.name" class="similar-img" @error="onSimImgError" v-if="!simImgFailed[sg.id]" />
+            <img
+              v-if="!simImgFailed[sg.id]"
+              :src="sg.image_url"
+              :alt="sg.name"
+              class="similar-img"
+              @error="() => simImgFailed[sg.id] = true"
+            />
             <div class="similar-placeholder" v-else>
               <svg viewBox="0 0 64 48" fill="none"><rect x="4" y="16" width="56" height="22" rx="6" stroke="currentColor" stroke-width="2"/><circle cx="48" cy="26" r="3" stroke="currentColor" stroke-width="1.5"/><circle cx="34" cy="24" r="1" fill="currentColor" opacity="0.4"/><circle cx="30" cy="30" r="1" fill="currentColor" opacity="0.4"/></svg>
             </div>
@@ -109,16 +115,6 @@ const screenshots = computed(() => game.value?.screenshots || [])
 const currentImg = computed(() => screenshots.value[activeIdx.value] || game.value?.image_url || '')
 const rating = ref(0)
 const simImgFailed = reactive({})
-
-function onSimImgError(e) {
-  const src = e.target?.src || ''
-  const match = src.match(/\/apps\/(\d+)\//)
-  if (match) simImgFailed[match[1]] = true
-  else {
-    const id = Object.keys(simImgFailed).length
-    simImgFailed[id] = true
-  }
-}
 
 const reviewPct = computed(() => {
   if (!game.value?.review_total) return 0
@@ -231,10 +227,13 @@ onMounted(async () => {
 .stat-negative { color: var(--neon-magenta); }
 
 /* 模块5: 用户评价 */
-.user-reviews-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.review-columns {
+  column-count: 3; column-gap: 14px;
+}
 .review-card {
+  break-inside: avoid;
   background: var(--surface); border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 10px; padding: 18px;
+  border-radius: 10px; padding: 18px; margin-bottom: 14px;
   transition: border-color 0.2s;
 }
 .review-card:hover { border-color: rgba(255,255,255,0.1); }
@@ -242,9 +241,7 @@ onMounted(async () => {
 .review-vote { font-size: 16px; }
 .review-playtime { font-size: 11px; color: var(--text-muted); }
 .review-card-text {
-  font-size: 13px; color: var(--text-secondary); line-height: 1.6;
-  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical;
-  overflow: hidden;
+  font-size: 13px; color: var(--text-secondary); line-height: 1.7;
 }
 
 /* 模块6: 相似游戏 */
@@ -264,12 +261,12 @@ onMounted(async () => {
 @media (max-width: 768px) {
   .hero-content { flex-direction: column; padding: 28px 24px; }
   .hero-right { justify-content: center; }
-  .user-reviews-grid { grid-template-columns: repeat(2, 1fr); }
+  .review-columns { column-count: 2; }
   .similar-grid { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 480px) {
   .detail { padding: 12px; }
-  .user-reviews-grid { grid-template-columns: 1fr; }
+  .review-columns { column-count: 1; }
   .similar-grid { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

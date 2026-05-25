@@ -11,10 +11,10 @@
     "http": "http://127.0.0.1:7890"
   },
   "llm": {
-    "api_base": "https://api.deepseek.com/v1",
-    "api_key": "",
-    "model": "deepseek-chat",
-    "embedding_model": "deepseek-embed",
+    "api_base": "https://api.deepseek.com",
+    "api_key": "sk-6999ca414ccf4633981312ef1f80ba28",
+    "model": "deepseek-v4-pro",
+    "embedding_model": "deepseek-v4-pro",
     "enabled": true
   },
   "database": "gameplan.db",

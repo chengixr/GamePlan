@@ -1,7 +1,9 @@
 import json
 import urllib.request
 import logging
-from config import LLM_ENABLED, LLM_API_BASE, LLM_API_KEY, LLM_MODEL, LLM_EMBEDDING_MODEL
+from config import LLM_ENABLED, LLM_API_BASE, LLM_API_KEY
+
+CHAT_MODEL = "deepseek-chat"  # 标签/名称提取用 chat 模型，不用 reasoning 模型
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,7 @@ def _chat(messages: list[dict], max_tokens: int = 300) -> str:
         return ""
     try:
         body = json.dumps({
-            "model": LLM_MODEL,
+            "model": CHAT_MODEL,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": 0.3,
@@ -26,7 +28,8 @@ def _chat(messages: list[dict], max_tokens: int = 300) -> str:
         req = urllib.request.Request(f"{LLM_API_BASE}/chat/completions", data=body, headers=HEADERS)
         resp = urllib.request.urlopen(req, timeout=20)
         data = json.loads(resp.read())
-        return data["choices"][0]["message"]["content"].strip()
+        msg = data["choices"][0]["message"]
+        return (msg.get("content", "") or "").strip()
     except Exception as e:
         logger.warning(f"LLM chat failed: {e}")
         return ""
@@ -53,20 +56,7 @@ def generate_chinese_name(en_name: str, description: str) -> str:
     return result[:30] if result else ""
 
 def get_embedding(text: str) -> list[float]:
-    if not _is_available() or not text:
-        return []
-    try:
-        body = json.dumps({
-            "model": LLM_EMBEDDING_MODEL,
-            "input": text[:8000],
-        }).encode()
-        req = urllib.request.Request(f"{LLM_API_BASE}/embeddings", data=body, headers=HEADERS)
-        resp = urllib.request.urlopen(req, timeout=30)
-        data = json.loads(resp.read())
-        return data["data"][0]["embedding"]
-    except Exception as e:
-        logger.warning(f"Embedding failed: {e}")
-        return []
+    return []
 
 def embedding_available() -> bool:
-    return _is_available()
+    return False

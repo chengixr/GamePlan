@@ -101,7 +101,7 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StarRating from '../components/StarRating.vue'
 import { useGamesStore } from '../stores/games'
@@ -112,17 +112,15 @@ const router = useRouter()
 const store = useGamesStore()
 const auth = useAuthStore()
 
+// 立即清空旧数据，避免闪现上一款游戏
+store.currentGame = null
+
 const game = computed(() => store.currentGame)
 const activeIdx = ref(0)
 const screenshots = computed(() => game.value?.screenshots || [])
 const currentImg = computed(() => screenshots.value[activeIdx.value] || game.value?.image_url || '')
 const rating = ref(0)
 const simImgFailed = reactive({})
-
-// 路由变化时立即清空旧数据，避免闪现上一款游戏
-watch(() => route.params.id, () => {
-  store.currentGame = null
-})
 
 const reviewPct = computed(() => {
   if (!game.value?.review_total) return 0

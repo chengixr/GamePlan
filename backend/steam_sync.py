@@ -374,6 +374,9 @@ def start_scheduler():
     global _scheduler
     _scheduler = BackgroundScheduler()
     _scheduler.add_job(sync_steam_data, "cron", hour="0,6,12,18", minute=17)
+    # 每天凌晨 3 点清理过期日志
+    from logger_config import clean_old_logs
+    _scheduler.add_job(clean_old_logs, "cron", hour=3, minute=0)
     _scheduler.start()
     from threading import Timer
     Timer(30, sync_steam_data).start()

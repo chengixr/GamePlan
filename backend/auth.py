@@ -5,7 +5,9 @@ from datetime import datetime, timezone, timedelta
 from database import SessionLocal, User, UserSession
 from models import RegisterRequest, LoginRequest, UserResponse, UpdateProfileRequest, ChangePasswordRequest
 import secrets
+import logging
 
+logger = logging.getLogger("auth")
 router = APIRouter()
 
 def get_db():
@@ -51,9 +53,11 @@ def _user_response(user: User) -> UserResponse:
 def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.username == body.username).first()
     if existing:
+        logger.warning(f"注册失败: 用户名 {body.username} 已存在")
         raise HTTPException(status_code=400, detail="该账号已被注册")
     user = User(username=body.username, nickname=body.username, password_hash=bcrypt.hash(body.password))
     db.add(user); db.commit(); db.refresh(user)
+    logger.info(f"新用户注册: {user.username} (id={user.id})")
     session_id = _create_session(db, user.id)
     response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=7*24*3600, samesite="lax")
     return _user_response(user)
@@ -62,18 +66,21 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == body.username).first()
     if not user or not bcrypt.verify(body.password, user.password_hash):
+        logger.warning(f"登录失败: 用户 {body.username} 密码错误或不存在")
         raise HTTPException(status_code=401, detail="账号或密码不正确")
     db.query(UserSession).filter(UserSession.user_id == user.id).delete()
+    logger.info(f"用户登录: {user.username} (id={user.id})")
     session_id = _create_session(db, user.id)
     response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=7*24*3600, samesite="lax")
     return _user_response(user)
 
 @router.post("/logout")
-def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+def logout(request: Request, response: Response, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     session_id = request.cookies.get("session_id")
     if session_id:
         db.query(UserSession).filter(UserSession.session_id == session_id).delete()
         db.commit()
+    logger.info(f"用户登出: {current_user.username} (id={current_user.id})")
     response.delete_cookie("session_id")
     return {"status": "ok"}
 

@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from database import Game, Rating
 from models import RatingRequest, RatingResponse
 from auth import get_current_user, get_db
+import logging
+
+logger = logging.getLogger("ratings")
 
 router = APIRouter()
 
@@ -22,9 +25,11 @@ def create_rating(
     if existing:
         existing.score = body.score
         db.commit()
+        logger.info(f"用户 {current_user.username} 更新评分: game_id={body.game_id} score={body.score}")
     else:
         db.add(Rating(user_id=current_user.id, game_id=body.game_id, score=body.score))
         db.commit()
+        logger.info(f"用户 {current_user.username} 评分: game_id={body.game_id} score={body.score}")
     return RatingResponse(game_id=body.game_id, score=body.score)
 
 @router.get("/mine", response_model=list[RatingResponse])

@@ -1,6 +1,8 @@
 import os
 import json as _json
-from fastapi import FastAPI
+import time
+import logging
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -8,6 +10,10 @@ from contextlib import asynccontextmanager
 from config import BACKEND_PORT, FRONTEND_PORT
 from database import init_db
 from seed_data import seed
+from logger_config import setup_logging, clean_old_logs
+
+setup_logging()
+logger = logging.getLogger("main")
 from auth import router as auth_router
 from games import router as games_router
 from ratings import router as ratings_router
@@ -19,11 +25,25 @@ FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"
 async def lifespan(app: FastAPI):
     init_db()
     seed()
+    clean_old_logs()
     start_scheduler()
+    logger.info("GamePlan 服务启动")
     yield
     shutdown_scheduler()
+    logger.info("GamePlan 服务关闭")
 
 app = FastAPI(lifespan=lifespan)
+
+# 请求日志中间件
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    elapsed = (time.time() - start) * 1000
+    logger = logging.getLogger("api")
+    level = logging.INFO if response.status_code < 400 else logging.WARNING
+    logger.log(level, f"{request.method} {request.url.path} → {response.status_code} ({elapsed:.0f}ms)")
+    return response
 
 app.add_middleware(
     CORSMiddleware,

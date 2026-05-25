@@ -101,7 +101,7 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StarRating from '../components/StarRating.vue'
 import { useGamesStore } from '../stores/games'
@@ -114,6 +114,15 @@ const auth = useAuthStore()
 
 // 立即清空旧数据，避免闪现上一款游戏
 store.currentGame = null
+
+// 路由参数变化时重新加载（如点击相似游戏跳转）
+watch(() => route.params.id, async (newId) => {
+  store.currentGame = null
+  Object.keys(simImgFailed).forEach(k => delete simImgFailed[k])
+  activeIdx.value = 0
+  await store.loadGameDetail(newId)
+  rating.value = store.myRatings[parseInt(newId)] || 0
+})
 
 const game = computed(() => store.currentGame)
 const activeIdx = ref(0)

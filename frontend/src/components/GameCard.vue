@@ -40,7 +40,7 @@
       <div class="tags">
         <span v-for="tag in game.tags.slice(0, 5)" :key="tag" class="tag">{{ tag }}</span>
       </div>
-      <div class="card-footer">
+      <div class="card-footer" v-if="showRating">
         <StarRating v-model="rating" @update:model-value="onRate" />
         <span class="rating-hint" v-if="!rating">评分</span>
       </div>
@@ -53,7 +53,7 @@ import { ref, computed, watch } from 'vue'
 import StarRating from './StarRating.vue'
 import { useGamesStore } from '../stores/games'
 
-const props = defineProps({ game: Object, rank: Number })
+const props = defineProps({ game: Object, rank: Number, showRating: { type: Boolean, default: true } })
 const store = useGamesStore()
 const rating = ref(store.myRatings[props.game.id] || 0)
 const imgLoaded = ref(false)     // 图片加载成功 → 显示

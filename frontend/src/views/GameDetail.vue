@@ -16,7 +16,7 @@
             <span class="hero-price">{{ game.price }}</span>
             <span class="hero-date" v-if="game.release_date">&#8226; {{ game.release_date }}</span>
           </div>
-          <div class="hero-rating">
+          <div class="hero-rating" v-if="auth.user">
             <StarRating v-model="rating" @update:model-value="onRate" />
           </div>
         </div>
@@ -105,10 +105,12 @@ import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StarRating from '../components/StarRating.vue'
 import { useGamesStore } from '../stores/games'
+import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const store = useGamesStore()
+const auth = useAuthStore()
 
 const game = computed(() => store.currentGame)
 const activeIdx = ref(0)
@@ -136,7 +138,8 @@ async function onRate(score) {
 
 onMounted(async () => {
   const id = route.params.id
-  await store.loadMyRatings()
+  await auth.checkAuth()
+  if (auth.user) await store.loadMyRatings()
   await store.loadGameDetail(id)
   rating.value = store.myRatings[parseInt(id)] || 0
 })

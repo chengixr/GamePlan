@@ -20,6 +20,7 @@
       :key="game.id"
       :game="game"
       :rank="idx + 1"
+      :show-rating="!!auth.user"
     />
 
     <!-- 加载指示器（无限滚动） -->
@@ -185,7 +186,8 @@ async function loadHistoryDate(d) {
 onMounted(async () => {
   store.hotGames = []
   await auth.checkAuth()
-  await Promise.all([store.loadMyRatings(), store.loadHot(1, pageSize)])
+  if (auth.user) await store.loadMyRatings()
+  await store.loadHot(1, pageSize)
   setupObserver()
 })
 

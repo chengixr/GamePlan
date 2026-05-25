@@ -1,0 +1,16 @@
+{
+  "backend": {
+    "port": 8000,
+    "host": "0.0.0.0"
+  },
+  "frontend": {
+    "port": 5173
+  },
+  "proxy": {
+    "https": "http://127.0.0.1:7890",
+    "http": "http://127.0.0.1:7890"
+  },
+  "database": "gameplan.db",
+  "secret_key": "dev-secret-change-in-production",
+  "session_days": 7
+}

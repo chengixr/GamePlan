@@ -6,6 +6,7 @@ export const useGamesStore = defineStore('games', {
     hotGames: [],
     hotTotal: 0,
     hotPage: 1,
+    hotCacheTime: 0,
     recGames: [],
     recTotal: 0,
     recPage: 1,
@@ -20,11 +21,16 @@ export const useGamesStore = defineStore('games', {
   actions: {
     // === 热销榜（支持追加） ===
     async loadHot(page = 1, pageSize = 20, append = false) {
+      // 首页数据 2 分钟内命中缓存
+      if (page === 1 && !append && this.hotGames.length > 0 && (Date.now() - this.hotCacheTime < 120000)) {
+        return
+      }
       const data = await api.topSellers(page, pageSize)
       if (append) {
         this.hotGames.push(...data.items)
       } else {
         this.hotGames = data.items
+        this.hotCacheTime = Date.now()
       }
       this.hotTotal = data.total
       this.hotPage = page

@@ -13,7 +13,19 @@
 </template>
 
 <script setup>
+import { onMounted } from 'vue'
+import { useGamesStore } from './stores/games'
+import { useAuthStore } from './stores/auth'
+
+// 启动时预加载热销榜和用户状态
+const gamesStore = useGamesStore()
+const authStore = useAuthStore()
+
+onMounted(async () => {
+  authStore.checkAuth()
+  gamesStore.loadHot(1, 20)
 import NavBar from './components/NavBar.vue'
+})
 </script>
 
 <style>

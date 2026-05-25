@@ -79,8 +79,8 @@
     <div class="section" v-if="game.similar_games?.length">
       <h2 class="section-title"><span class="title-bar"></span> 相似游戏</h2>
       <div class="similar-grid">
-        <router-link v-for="sg in game.similar_games" :key="sg.id"
-          :to="'/game/' + sg.id" class="similar-card">
+        <div v-for="sg in game.similar_games" :key="sg.id"
+          class="similar-card" @click="router.push('/game/' + sg.id)">
           <div class="similar-img-wrap">
             <img
               v-if="!simImgFailed[sg.id]"
@@ -94,19 +94,20 @@
             </div>
           </div>
           <span class="similar-name">{{ sg.name_cn || sg.name }}</span>
-        </router-link>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import StarRating from '../components/StarRating.vue'
 import { useGamesStore } from '../stores/games'
 
 const route = useRoute()
+const router = useRouter()
 const store = useGamesStore()
 
 const game = computed(() => store.currentGame)
@@ -115,6 +116,11 @@ const screenshots = computed(() => game.value?.screenshots || [])
 const currentImg = computed(() => screenshots.value[activeIdx.value] || game.value?.image_url || '')
 const rating = ref(0)
 const simImgFailed = reactive({})
+
+// 路由变化时立即清空旧数据，避免闪现上一款游戏
+watch(() => route.params.id, () => {
+  store.currentGame = null
+})
 
 const reviewPct = computed(() => {
   if (!game.value?.review_total) return 0
@@ -246,7 +252,7 @@ onMounted(async () => {
 
 /* 模块6: 相似游戏 */
 .similar-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
-.similar-card { text-decoration: none; color: inherit; background: var(--surface); border-radius: 10px; overflow: hidden; transition: transform 0.2s, border-color 0.2s; border: 1px solid rgba(255,255,255,0.04); }
+.similar-card { text-decoration: none; color: inherit; background: var(--surface); border-radius: 10px; overflow: hidden; transition: transform 0.2s, border-color 0.2s; border: 1px solid rgba(255,255,255,0.04); cursor: pointer; }
 .similar-card:hover { transform: translateY(-3px); border-color: var(--border-glow); }
 .similar-img-wrap { width: 100%; aspect-ratio: 16/9; background: var(--surface-raised); overflow: hidden; }
 .similar-img { width: 100%; height: 100%; object-fit: cover; }

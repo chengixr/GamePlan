@@ -10,6 +10,13 @@
     "https": "http://127.0.0.1:7890",
     "http": "http://127.0.0.1:7890"
   },
+  "llm": {
+    "api_base": "https://api.deepseek.com/v1",
+    "api_key": "",
+    "model": "deepseek-chat",
+    "embedding_model": "deepseek-embed",
+    "enabled": true
+  },
   "database": "gameplan.db",
   "secret_key": "dev-secret-change-in-production",
   "session_days": 7

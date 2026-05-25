@@ -24,3 +24,10 @@ DATABASE_URL = os.environ.get(
 )
 SECRET_KEY = os.environ.get("SECRET_KEY", _cfg.get("secret_key", "dev-secret-change-in-production"))
 SESSION_DAYS = int(os.environ.get("SESSION_DAYS", _cfg.get("session_days", 7)))
+
+_llm = _cfg.get("llm", {})
+LLM_ENABLED = os.environ.get("LLM_ENABLED", str(_llm.get("enabled", False))).lower() == "true"
+LLM_API_BASE = os.environ.get("DEEPSEEK_API_BASE", _llm.get("api_base", "https://api.deepseek.com/v1"))
+LLM_API_KEY = os.environ.get("DEEPSEEK_API_KEY", _llm.get("api_key", ""))
+LLM_MODEL = os.environ.get("DEEPSEEK_MODEL", _llm.get("model", "deepseek-chat"))
+LLM_EMBEDDING_MODEL = os.environ.get("DEEPSEEK_EMBEDDING", _llm.get("embedding_model", "deepseek-embed"))

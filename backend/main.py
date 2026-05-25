@@ -1,4 +1,5 @@
 import os
+import json as _json
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -52,6 +53,33 @@ def trigger_sync():
 STATIC_IMAGES = os.path.join(os.path.dirname(__file__), "static", "images")
 os.makedirs(STATIC_IMAGES, exist_ok=True)
 app.mount("/static/images", StaticFiles(directory=STATIC_IMAGES), name="static_images")
+
+@app.post("/api/llm/build-embeddings")
+def build_embeddings():
+    from llm import get_embedding, embedding_available
+    from database import SessionLocal, Game, GameEmbedding
+
+    if not embedding_available():
+        return {"status": "unavailable", "message": "LLM 未配置或不可用"}
+
+    db = SessionLocal()
+    try:
+        games = db.query(Game).outerjoin(GameEmbedding, Game.id == GameEmbedding.game_id).filter(GameEmbedding.game_id == None, Game.description != "").all()
+        built = 0
+        for g in games:
+            desc = (g.description or "")[:2000]
+            if len(desc) < 50:
+                continue
+            emb = get_embedding(desc)
+            if emb:
+                db.merge(GameEmbedding(game_id=g.id, embedding=_json.dumps(emb)))
+                built += 1
+                if built % 10 == 0:
+                    db.commit()
+        db.commit()
+        return {"status": "ok", "built": built, "total": len(games)}
+    finally:
+        db.close()
 
 @app.get("/api/health")
 def health():

@@ -1,4 +1,5 @@
 from datetime import date
+import json
 import random
 from sqlalchemy.orm import Session
 from database import Rating, Game, DailyTopSeller, RecommendationHistory
@@ -38,6 +39,45 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
     game_tag_sets = {}
     for g in all_games:
         game_tag_sets[g.id] = {t.name for t in g.tags}
+
+    # === Embedding 模式（LLM可用且覆盖率 > 50% 时启用） ===
+    embedding_mode = False
+    embeddings = {}
+    try:
+        from database import GameEmbedding
+        from llm import embedding_available
+        if embedding_available():
+            # 加载所有 embedding
+            for ge in db.query(GameEmbedding).all():
+                try:
+                    embeddings[ge.game_id] = json.loads(ge.embedding)
+                except: pass
+            coverage = len(embeddings) / max(1, len(all_games))
+            if coverage > 0.5 and high_rated:
+                embedding_mode = True
+    except: pass
+
+    if embedding_mode:
+        # 用户画像向量 = 高分游戏向量的加权平均
+        profile_vec = None
+        total_weight = 0
+        for gid in high_rated:
+            if gid in embeddings:
+                vec = embeddings[gid]
+                weight = current_scores[gid]
+                if profile_vec is None:
+                    profile_vec = [v * weight for v in vec]
+                else:
+                    profile_vec = [profile_vec[i] + vec[i] * weight for i in range(len(vec))]
+                total_weight += weight
+
+        if profile_vec and total_weight > 0:
+            profile_vec = [v / total_weight for v in profile_vec]
+            # 用 embedding 相似度替换标签相似度
+            for g in all_games:
+                if g.id in rated_game_ids or g.id not in embeddings:
+                    continue
+                tag_scores[g.id] = _cosine_similarity_list(profile_vec, embeddings[g.id])
 
     # 喜欢标签集
     high_rated_tags = set()
@@ -161,6 +201,14 @@ def get_similar_games(db: Session, game_id: int, limit: int = 6) -> list[int]:
 
     sorted_games = sorted(final.items(), key=lambda x: x[1], reverse=True)
     return [gid for gid, _ in sorted_games[:limit]]
+
+
+def _cosine_similarity_list(a: list[float], b: list[float]) -> float:
+    if not a or not b: return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x ** 2 for x in a) ** 0.5
+    norm_b = sum(y ** 2 for y in b) ** 0.5
+    return dot / (norm_a * norm_b) if norm_a and norm_b else 0.0
 
 
 def _rating_vector(scores: dict[int, int]) -> dict[int, float] | None:

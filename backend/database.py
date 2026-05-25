@@ -72,6 +72,12 @@ class RecommendationHistory(Base):
     game_id = Column(Integer, ForeignKey("games.id"), nullable=False)
     recommended_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+class GameEmbedding(Base):
+    __tablename__ = "game_embeddings"
+    game_id = Column(Integer, ForeignKey("games.id"), primary_key=True)
+    embedding = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 class UserSession(Base):
     __tablename__ = "user_sessions"
     id = Column(Integer, primary_key=True, autoincrement=True)

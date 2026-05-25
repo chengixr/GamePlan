@@ -281,6 +281,8 @@ def sync_steam_data():
                     db.add(DailyTopSeller(game_id=gid, rank=rank, date=today))
 
         db.commit()
+        from games import clear_hot_cache
+        clear_hot_cache()
         logger.info(f"同步完成: 新增 {synced}, 更新 {updated}, 下载图片 {img_ok}, 共 {len(items)} 款")
     except Exception as e:
         db.rollback()
@@ -297,6 +299,17 @@ def _try_fetch_details(appid: int) -> dict | None:
         tags = [translate_tag(g.get("description", "")) for g in gd.get("genres", [])]
         tags += [translate_tag(c.get("description", "")) for c in gd.get("categories", [])]
 
+        # LLM 标签补充
+        desc_for_llm = gd.get("detailed_description", "") or gd.get("short_description", "")
+        if desc_for_llm:
+            try:
+                from llm import extract_tags
+                llm_tags = extract_tags(desc_for_llm)
+                for t in llm_tags:
+                    if t not in tags:
+                        tags.append(t)
+            except: pass
+
         screenshots = []
         for s in gd.get("screenshots", [])[:10]:
             url = s.get("path_full", "")
@@ -308,8 +321,21 @@ def _try_fetch_details(appid: int) -> dict | None:
         total_reviews = recs.get("total_reviews", 0) or (review_positive * 100 // 80 if review_positive else 0)
         review_summary = json.dumps({"positive": review_positive, "total": total_reviews})
 
+        name_cn = gd.get("name", "")
+        # LLM 生成中文名（如果 Steam 没返回中文名或与英文名相同则用 LLM）
+        if not name_cn or name_cn == gd.get("name", "") or not any('\u4e00' <= c <= '\u9fff' for c in name_cn):
+            try:
+                from llm import generate_chinese_name
+                llm_cn = generate_chinese_name(
+                    gd.get("name", ""),
+                    gd.get("short_description", "") or gd.get("detailed_description", "")
+                )
+                if llm_cn:
+                    name_cn = llm_cn
+            except: pass
+
         return {
-            "name_cn": gd.get("name", ""),
+            "name_cn": name_cn,
             "description": gd.get("detailed_description", "") or gd.get("short_description", ""),
             "release_date": gd.get("release_date", {}).get("date", ""),
             "tags": tags,

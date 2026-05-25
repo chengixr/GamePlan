@@ -13,8 +13,8 @@
   "llm": {
     "api_base": "https://api.deepseek.com",
     "api_key": "sk-6999ca414ccf4633981312ef1f80ba28",
-    "model": "deepseek-v4-pro",
-    "embedding_model": "deepseek-v4-pro",
+    "model": "deepseek-chat",
+    "embedding_model": "none",
     "enabled": true
   },
   "database": "gameplan.db",

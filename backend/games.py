@@ -168,5 +168,6 @@ def game_detail(game_id: int, db: Session = Depends(get_db)):
         "screenshots": screenshots,
         "review_positive": review_positive,
         "review_total": review_total,
+        "user_reviews": json.loads(game.user_reviews or "[]"),
         "similar_games": similar,
     }

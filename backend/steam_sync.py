@@ -210,6 +210,7 @@ def sync_steam_data():
                     release_date=details.get("release_date", "") if details else "",
                     screenshots=details.get("screenshots", "[]") if details else "[]",
                     review_summary=details.get("review_summary", "{}") if details else "{}",
+                    user_reviews=_fetch_user_reviews(appid) if details else "[]",
                     reviews_synced_at=datetime.now(timezone.utc) if details else None,
                 )
                 db.add(game); db.flush()
@@ -248,10 +249,12 @@ def sync_steam_data():
                         time.sleep(0.5)
                         d = _try_fetch_details(appid); detail_count += 1
                         if d:
-                            # 截图和评价
                             game.screenshots = d.get("screenshots", "[]")
                             game.review_summary = d.get("review_summary", "{}")
                             game.reviews_synced_at = datetime.now(timezone.utc)
+                            # 用户评价
+                            if not game.user_reviews or game.user_reviews == "[]":
+                                game.user_reviews = _fetch_user_reviews(appid)
                             # 描述：用 Steam 详细描述替换简短描述
                             if d.get("description") and len(d["description"]) > len(game.description or ''):
                                 game.description = d["description"]
@@ -320,6 +323,26 @@ def _try_fetch_details(appid: int) -> dict | None:
 # ==================== 定时调度 ====================
 
 _scheduler = None
+
+def _fetch_user_reviews(appid: int) -> str:
+    """获取 Steam 用户评价（12条中文）"""
+    try:
+        url = f"https://store.steampowered.com/appreviews/{appid}?json=1&num_per_page=12&language=schinese&review_type=all"
+        opener = _make_opener()
+        req = ur.Request(url, headers=HEADERS)
+        resp = (opener.open(req, timeout=15) if opener else ur.urlopen(req, timeout=15))
+        data = json.loads(resp.read())
+        reviews = []
+        for r in data.get("reviews", []):
+            reviews.append({
+                "text": r.get("review", "")[:500],
+                "voted_up": r.get("voted_up", True),
+                "playtime": r.get("author", {}).get("playtime_forever", 0),
+            })
+        return json.dumps(reviews)
+    except Exception as e:
+        logger.warning(f"获取评价 {appid} 失败: {e}")
+        return "[]"
 
 def start_scheduler():
     global _scheduler

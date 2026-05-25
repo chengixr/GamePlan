@@ -65,3 +65,8 @@ rm backend/gameplan.db
 ### 数据库关联
 
 Game-Tag 多对多通过 `game_tag_assoc` Table 对象（非模型类），查询时需 `joinedload(Game.tags)` 来 eager load 标签。
+
+
+### git推送
+
+每次修改后都自动推送到github仓库：https://github.com/chengixr/GamePlan.git

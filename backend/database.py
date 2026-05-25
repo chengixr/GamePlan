@@ -37,6 +37,7 @@ class Game(Base):
     screenshots = Column(Text, default="[]")
     review_summary = Column(Text, default="{}")
     reviews_synced_at = Column(DateTime, nullable=True)
+    user_reviews = Column(Text, default="[]")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     tags = relationship("Tag", secondary=game_tag_assoc, back_populates="games")

@@ -14,17 +14,16 @@
 
 <script setup>
 import { onMounted } from 'vue'
+import NavBar from './components/NavBar.vue'
 import { useGamesStore } from './stores/games'
 import { useAuthStore } from './stores/auth'
 
-// 启动时预加载热销榜和用户状态
 const gamesStore = useGamesStore()
 const authStore = useAuthStore()
 
 onMounted(async () => {
   authStore.checkAuth()
   gamesStore.loadHot(1, 20)
-import NavBar from './components/NavBar.vue'
 })
 </script>
 
@@ -89,7 +88,6 @@ a {
 }
 a:hover { color: var(--neon-magenta); }
 
-/* 自定义滚动条 */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--void); }
 ::-webkit-scrollbar-thumb {
@@ -99,13 +97,11 @@ a:hover { color: var(--neon-magenta); }
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(0, 229, 255, 0.2); }
 
-/* Firefox scrollbar */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--surface-raised) var(--void);
 }
 
-/* Page transitions */
 .page-fade-enter-active,
 .page-fade-leave-active {
   transition: opacity 0.25s ease, transform 0.25s ease;

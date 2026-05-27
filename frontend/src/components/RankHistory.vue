@@ -38,15 +38,32 @@ const panelRef = ref(null)
 const days = ref(7)
 const loading = ref(false)
 const history = ref([])
+const allLabels = ref([])
+const allRanks = ref([])
+
+function buildFullRange(fetched, selectedDays) {
+  const today = new Date()
+  const labels = []
+  const ranks = []
+  const rankMap = {}
+  for (const h of fetched) {
+    rankMap[h.date] = h.rank
+  }
+  for (let i = selectedDays - 1; i >= 0; i--) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - i)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    labels.push(`${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')}`)
+    ranks.push(key in rankMap ? rankMap[key] : null)
+  }
+  return { labels, ranks }
+}
 
 const chartData = computed(() => ({
-  labels: history.value.map(h => {
-    const d = new Date(h.date)
-    return `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')}`
-  }),
+  labels: allLabels.value,
   datasets: [{
     label: '排名',
-    data: history.value.map(h => h.rank),
+    data: allRanks.value,
     borderColor: '#00e5ff',
     backgroundColor: 'rgba(0, 229, 255, 0.08)',
     fill: true,
@@ -57,12 +74,16 @@ const chartData = computed(() => ({
     pointBorderWidth: 2,
     pointHoverRadius: 6,
     borderWidth: 2,
+    spanGaps: false,
   }]
 }))
 
 const chartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  layout: {
+    padding: { top: 16, right: 8, bottom: 0, left: 0 }
+  },
   plugins: {
     legend: { display: false },
     tooltip: {
@@ -74,7 +95,7 @@ const chartOptions = computed(() => ({
       padding: 10,
       callbacks: {
         title: (items) => `日期: ${items[0].label}`,
-        label: (item) => `排名: 第 ${item.raw} 名`,
+        label: (item) => item.raw !== null ? `排名: 第 ${item.raw} 名` : '无数据',
       }
     }
   },
@@ -107,9 +128,16 @@ async function fetchHistory() {
   loading.value = true
   try {
     const res = await api.rankHistory(props.gameId, days.value)
-    history.value = res.history || []
+    const fetched = res.history || []
+    history.value = fetched
+    const full = buildFullRange(fetched, days.value)
+    allLabels.value = full.labels
+    allRanks.value = full.ranks
   } catch {
     history.value = []
+    const full = buildFullRange([], days.value)
+    allLabels.value = full.labels
+    allRanks.value = full.ranks
   } finally {
     loading.value = false
   }

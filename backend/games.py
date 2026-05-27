@@ -150,6 +150,29 @@ def top_sellers_dates(db: Session = Depends(get_db)):
     dates = db.query(distinct(DailyTopSeller.date)).order_by(DailyTopSeller.date.desc()).limit(30).all()
     return [d[0].isoformat() for d in dates]
 
+@router.get("/{game_id}/rank-history")
+def game_rank_history(
+    game_id: int,
+    days: int = Query(7),
+    db: Session = Depends(get_db),
+):
+    """查询游戏在热销榜的历史排名"""
+    if days not in (7, 30, 90):
+        raise HTTPException(status_code=400, detail="days 必须为 7、30 或 90")
+
+    today = date.today()
+    since = today - timedelta(days=days)
+
+    rows = (
+        db.query(DailyTopSeller)
+        .filter(DailyTopSeller.game_id == game_id, DailyTopSeller.date >= since)
+        .order_by(DailyTopSeller.date.asc())
+        .all()
+    )
+
+    history = [{"date": r.date.isoformat(), "rank": r.rank} for r in rows]
+    return {"game_id": game_id, "days": days, "history": history}
+
 @router.get("/{game_id}")
 def game_detail(game_id: int, db: Session = Depends(get_db)):
     game = db.query(Game).options(joinedload(Game.tags)).filter(Game.id == game_id).first()

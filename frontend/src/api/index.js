@@ -34,6 +34,7 @@ export const api = {
   historyDates: () => request('/games/top-sellers/dates'),
   history: (targetDate, page = 1, pageSize = 20) =>
     request(`/games/top-sellers/history?target_date=${targetDate}&page=${page}&page_size=${pageSize}`),
+  rankHistory: (gameId, days = 7) => request(`/games/${gameId}/rank-history?days=${days}`),
   updateProfile: (body) => request('/auth/profile', { method: 'PUT', body: JSON.stringify(body) }),
   changePassword: (body) => request('/auth/password', { method: 'PUT', body: JSON.stringify(body) }),
 }

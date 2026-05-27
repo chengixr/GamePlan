@@ -15,6 +15,7 @@
           <div class="hero-meta">
             <span class="hero-price">{{ game.price }}</span>
             <span class="hero-date" v-if="game.release_date">&#8226; {{ game.release_date }}</span>
+            <button class="btn-rank-history" :class="{ active: showRankHistory }" @click.stop="toggleRankHistory">📈 历史排名</button>
           </div>
           <div class="hero-rating" v-if="auth.user">
             <StarRating v-model="rating" @update:model-value="onRate" />
@@ -28,6 +29,7 @@
           </div>
         </div>
       </div>
+      <RankHistory v-if="showRankHistory" :game-id="game.id" @close="showRankHistory = false" />
     </div>
 
     <!-- 模块2: 截图画廊 -->
@@ -104,6 +106,7 @@
 import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StarRating from '../components/StarRating.vue'
+import RankHistory from '../components/RankHistory.vue'
 import { useGamesStore } from '../stores/games'
 import { useAuthStore } from '../stores/auth'
 
@@ -120,6 +123,7 @@ watch(() => route.params.id, async (newId) => {
   store.currentGame = null
   Object.keys(simImgFailed).forEach(k => delete simImgFailed[k])
   activeIdx.value = 0
+  showRankHistory.value = false
   await store.loadGameDetail(newId)
   rating.value = store.myRatings[parseInt(newId)] || 0
 })
@@ -129,6 +133,7 @@ const activeIdx = ref(0)
 const screenshots = computed(() => game.value?.screenshots || [])
 const currentImg = computed(() => screenshots.value[activeIdx.value] || game.value?.image_url || '')
 const rating = ref(0)
+const showRankHistory = ref(false)
 const simImgFailed = reactive({})
 
 const reviewPct = computed(() => {
@@ -141,6 +146,10 @@ async function onRate(score) {
     await store.rate(game.value.id, score)
     rating.value = score
   }
+}
+
+function toggleRankHistory() {
+  showRankHistory.value = !showRankHistory.value
 }
 
 onMounted(async () => {
@@ -209,6 +218,26 @@ onMounted(async () => {
 .hero-meta { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
 .hero-price { font-size: 24px; color: var(--neon-amber); font-weight: 700; }
 .hero-date { font-size: 14px; color: var(--text-muted); }
+
+.btn-rank-history {
+  background: var(--surface-raised);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-secondary);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-rank-history:hover {
+  color: var(--neon-cyan);
+  border-color: rgba(0,229,255,0.2);
+}
+.btn-rank-history.active {
+  background: rgba(0, 229, 255, 0.1);
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
 
 .hero-right { flex-shrink: 0; display: flex; align-items: center; }
 .review-badge {

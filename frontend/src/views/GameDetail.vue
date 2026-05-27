@@ -29,8 +29,8 @@
           </div>
         </div>
       </div>
-      <RankHistory v-if="showRankHistory" :game-id="game.id" @close="showRankHistory = false" />
     </div>
+    <RankHistory v-if="showRankHistory" :game-id="game.id" @close="showRankHistory = false" />
 
     <!-- 模块2: 截图画廊 -->
     <div class="section" v-if="screenshots.length > 0">

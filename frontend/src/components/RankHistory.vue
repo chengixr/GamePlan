@@ -86,12 +86,17 @@ const chartOptions = computed(() => ({
     y: {
       reverse: true,
       min: 1,
+      title: {
+        display: true,
+        text: '排名',
+        color: 'rgba(255,255,255,0.4)',
+        font: { size: 12 }
+      },
       grid: { color: 'rgba(255,255,255,0.04)' },
       ticks: {
         color: 'rgba(255,255,255,0.4)',
         font: { size: 11 },
         stepSize: 1,
-        callback: (v) => `第${v}名`
       }
     }
   },
@@ -137,7 +142,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(0, 229, 255, 0.15);
   border-radius: 10px;
   padding: 20px;
-  margin-top: 16px;
+  margin: 16px 0;
   animation: rh-slide-in 0.25s ease;
 }
 @keyframes rh-slide-in {
@@ -158,22 +163,24 @@ onBeforeUnmount(() => {
   letter-spacing: 2px;
   color: var(--text-primary);
 }
-.rh-tabs { display: flex; gap: 6px; }
+.rh-tabs { display: flex; gap: 8px; }
 .rh-tab {
   background: var(--surface-raised);
-  border: 1px solid rgba(255,255,255,0.06);
-  color: var(--text-secondary);
-  padding: 4px 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-primary);
+  padding: 5px 16px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
 }
-.rh-tab:hover { color: var(--neon-cyan); border-color: rgba(0,229,255,0.2); }
+.rh-tab:hover { color: var(--neon-cyan); border-color: rgba(0,229,255,0.3); background: rgba(0,229,255,0.05); }
 .rh-tab.active {
-  background: rgba(0, 229, 255, 0.1);
+  background: rgba(0, 229, 255, 0.12);
   border-color: var(--neon-cyan);
   color: var(--neon-cyan);
+  box-shadow: 0 0 8px rgba(0,229,255,0.15);
 }
 
 .rh-chart-wrap {

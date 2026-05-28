@@ -18,6 +18,9 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 IMAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "images")
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
+SCREENSHOTS_DIR = os.path.join(IMAGES_DIR, "screenshots")
+os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+
 
 # ==================== 工具函数 ====================
 
@@ -65,6 +68,26 @@ def _download_image(appid: int) -> bool:
         return True
     except Exception:
         return False
+
+
+def _download_screenshots(appid: int, steam_urls: list[str]) -> list[str]:
+    """下载截图到本地，返回本地 URL 列表。未下载成功的保留原始 URL。"""
+    local_urls = []
+    for idx, url in enumerate(steam_urls):
+        local_path = os.path.join(SCREENSHOTS_DIR, f"{appid}_{idx}.jpg")
+        if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+            local_urls.append(f"/static/images/screenshots/{appid}_{idx}.jpg")
+            continue
+        try:
+            opener = _make_opener()
+            req = ur.Request(url, headers=HEADERS)
+            resp = (opener.open(req, timeout=15) if opener else ur.urlopen(req, timeout=15))
+            with open(local_path, "wb") as f:
+                f.write(resp.read())
+            local_urls.append(f"/static/images/screenshots/{appid}_{idx}.jpg")
+        except Exception:
+            local_urls.append(url)  # 下载失败保留原始 URL
+    return local_urls
 
 
 # ==================== 数据源 1: Steam featuredcategories API ====================
@@ -314,10 +337,14 @@ def _try_fetch_details(appid: int) -> dict | None:
         tags = dedup_tags(tags)
 
         screenshots = []
+        steam_screenshot_urls = []
         for s in gd.get("screenshots", [])[:10]:
             url = s.get("path_full", "")
             if url:
-                screenshots.append(url)
+                steam_screenshot_urls.append(url)
+
+        # 下载截图到本地
+        screenshots = _download_screenshots(appid, steam_screenshot_urls)
 
         recs = gd.get("recommendations", {})
         review_positive = recs.get("total", 0)

@@ -39,6 +39,7 @@
       <div class="thumbs">
         <img v-for="(s, i) in screenshots.slice(0, 8)" :key="i"
           :src="s" class="thumb" :class="{ active: i === activeIdx }"
+          loading="lazy"
           @click="activeIdx = i" />
       </div>
     </div>

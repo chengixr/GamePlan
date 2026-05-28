@@ -1,9 +1,17 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Date, ForeignKey, Table, UniqueConstraint
+from sqlalchemy import create_engine, event, Column, Integer, String, Text, DateTime, Date, ForeignKey, Table, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime, timezone
 from config import DATABASE_URL
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 30})
+
+@event.listens_for(engine, "connect")
+def _set_wal(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

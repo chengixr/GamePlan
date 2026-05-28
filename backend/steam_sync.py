@@ -297,7 +297,6 @@ def _try_fetch_details(appid: int) -> dict | None:
         if not gd.get("name"):
             return None
         tags = [translate_tag(g.get("description", "")) for g in gd.get("genres", [])]
-        tags += [translate_tag(c.get("description", "")) for c in gd.get("categories", [])]
 
         # LLM 标签补充
         desc_for_llm = gd.get("detailed_description", "") or gd.get("short_description", "")
@@ -309,6 +308,10 @@ def _try_fetch_details(appid: int) -> dict | None:
                     if t not in tags:
                         tags.append(t)
             except: pass
+
+        # 去重：合并相近标签，去除低价值标签
+        from tag_library import dedup_tags
+        tags = dedup_tags(tags)
 
         screenshots = []
         for s in gd.get("screenshots", [])[:10]:

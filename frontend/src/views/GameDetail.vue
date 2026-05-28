@@ -260,11 +260,17 @@ onMounted(async () => {
 .desc { font-size: 15px; color: var(--text-secondary); line-height: 1.9; }
 .desc :deep(h2), .desc :deep(h1) { font-size: 18px; color: var(--text-primary); margin: 24px 0 12px; }
 .desc :deep(strong) { color: var(--text-primary); }
+.desc :deep(.bb_img_ctn) {
+  display: block;
+  line-height: 0;
+  font-size: 0;
+  margin: 8px 0;
+}
 .desc :deep(img) {
   display: block;
   width: calc(100% + 48px);
   max-width: 1100px;
-  margin: 16px -24px;
+  margin: 8px -24px;
   border-radius: 12px;
   object-fit: contain;
 }
@@ -272,7 +278,7 @@ onMounted(async () => {
   display: block;
   width: calc(100% + 48px);
   max-width: 1100px;
-  margin: 16px -24px;
+  margin: 8px -24px;
   border-radius: 12px;
 }
 .desc :deep(ul), .desc :deep(.bb_ul) { padding-left: 22px; margin: 10px 0; }

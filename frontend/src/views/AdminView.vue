@@ -27,7 +27,7 @@ const tabs = [
 </script>
 
 <style scoped>
-.admin { max-width: 1100px; margin: 0 auto; padding: 24px; }
+.admin { max-width: 1200px; margin: 0 auto; padding: 24px; }
 
 .admin-title {
   font-family: var(--font-display);

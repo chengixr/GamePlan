@@ -39,10 +39,12 @@ app = FastAPI(lifespan=lifespan)
 async def log_requests(request: Request, call_next):
     start = time.time()
     response = await call_next(request)
-    elapsed = (time.time() - start) * 1000
-    logger = logging.getLogger("api")
-    level = logging.INFO if response.status_code < 400 else logging.WARNING
-    logger.log(level, f"{request.method} {request.url.path} → {response.status_code} ({elapsed:.0f}ms)")
+    # 仅记录写操作（POST/PUT/DELETE）和服务端错误（5xx）
+    if request.method in ("POST", "PUT", "DELETE") or response.status_code >= 500:
+        elapsed = (time.time() - start) * 1000
+        logger = logging.getLogger("api")
+        level = logging.INFO if response.status_code < 400 else logging.WARNING
+        logger.log(level, f"{request.method} {request.url.path} → {response.status_code} ({elapsed:.0f}ms)")
     return response
 
 app.add_middleware(
@@ -59,6 +61,8 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(games_router, prefix="/api/games", tags=["games"])
 app.include_router(ratings_router, prefix="/api/ratings", tags=["ratings"])
+from admin import router as admin_router
+app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
 
 from threading import Thread
 

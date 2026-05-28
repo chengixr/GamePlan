@@ -37,4 +37,18 @@ export const api = {
   rankHistory: (gameId, days = 7) => request(`/games/${gameId}/rank-history?days=${days}`),
   updateProfile: (body) => request('/auth/profile', { method: 'PUT', body: JSON.stringify(body) }),
   changePassword: (body) => request('/auth/password', { method: 'PUT', body: JSON.stringify(body) }),
+  adminUsers: (search = '', page = 1, pageSize = 20) =>
+    request(`/admin/users?search=${encodeURIComponent(search)}&page=${page}&page_size=${pageSize}`),
+  adminUserStatus: (userId, isActive) =>
+    request(`/admin/users/${userId}/status`, { method: 'PUT', body: JSON.stringify({ is_active: isActive }) }),
+  adminDeleteUser: (userId) =>
+    request(`/admin/users/${userId}`, { method: 'DELETE' }),
+  adminUserRatings: (userId) =>
+    request(`/admin/users/${userId}/ratings`),
+  adminSyncStatus: () => request('/admin/sync/status'),
+  adminSyncTrigger: () => request('/admin/sync/trigger', { method: 'POST' }),
+  adminSyncStats: () => request('/admin/sync/stats'),
+  adminSyncGame: (gameId) => request(`/admin/sync/game/${gameId}`),
+  adminLogs: (date = '', level = 'ALL', lines = 100) =>
+    request(`/admin/logs?target_date=${date}&level=${level}&lines=${lines}`),
 }

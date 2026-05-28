@@ -10,6 +10,7 @@ const routes = [
   { path: '/profile', name: 'Profile', component: () => import('../views/EditProfile.vue'), meta: { requiresAuth: true } },
   { path: '/password', name: 'Password', component: () => import('../views/ChangePassword.vue'), meta: { requiresAuth: true } },
   { path: '/game/:id', name: 'GameDetail', component: () => import('../views/GameDetail.vue') },
+  { path: '/admin', name: 'Admin', component: () => import('../views/AdminView.vue'), meta: { requiresAdmin: true } },
 ]
 
 const router = createRouter({
@@ -22,7 +23,9 @@ router.beforeEach(async (to, from, next) => {
   if (!auth.user) {
     try { await auth.checkAuth() } catch {}
   }
-  if (to.meta.requiresAuth && !auth.user) {
+  if (to.meta.requiresAdmin && !auth.user?.is_admin) {
+    next('/hot')
+  } else if (to.meta.requiresAuth && !auth.user) {
     next('/login')
   } else {
     next()

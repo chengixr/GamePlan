@@ -6,6 +6,7 @@
     </router-link>
     <div class="nav-links">
       <router-link to="/hot" class="nav-link">热销榜</router-link>
+      <router-link v-if="auth.user?.is_admin" to="/admin" class="nav-link nav-link--admin">管理</router-link>
       <router-link v-if="auth.user" to="/recommend" class="nav-link">推荐</router-link>
     </div>
     <div class="nav-right">
@@ -84,6 +85,8 @@ async function onLogout() {
 }
 .nav-link--accent { color: var(--neon-cyan) !important; border: 1px solid rgba(0,229,255,0.3); }
 .nav-link--accent:hover { background: rgba(0,229,255,0.1) !important; box-shadow: 0 0 12px rgba(0,229,255,0.15); }
+.nav-link--admin { color: var(--neon-amber) !important; }
+.nav-link--admin:hover { color: var(--neon-amber) !important; text-shadow: 0 0 8px rgba(255,184,0,0.3); }
 .nav-right { margin-left: auto; display: flex; align-items: center; }
 
 .user-menu { position: relative; }

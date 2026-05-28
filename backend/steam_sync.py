@@ -408,10 +408,94 @@ def _fetch_user_reviews(appid: int) -> str:
         logger.warning(f"获取评价 {appid} 失败: {e}")
         return "[]"
 
+def catchup_sync():
+    """
+    19:00 追补同步：整合当天未录入的游戏 + 库中已有游戏的缺漏数据
+    1. 尝试从 Steam 数据源再抓一次热销榜
+    2. 对当天未收录的游戏，补录排名并拉取详情
+    3. 对库中已有但数据不全的游戏，补充截图/描述/标签
+    """
+    today = date.today()
+    logger.info("=== 开始追补同步 (19:00) ===")
+    db = SessionLocal()
+    try:
+        # 1. 收集当天已有排名的游戏 ID
+        today_entries = db.query(DailyTopSeller).filter(DailyTopSeller.date == today).all()
+        today_game_ids = {e.game_id for e in today_entries}
+
+        # 2. 收集所有数据源的游戏（最后一次尝试）
+        from_games = sync_from_api()
+        from_search = sync_from_search()
+        from_charts = sync_from_steamcharts()
+        all_ids = set()
+        merge = {}
+        for item in from_games + from_search + from_charts:
+            aid = item["appid"]
+            if aid not in all_ids:
+                all_ids.add(aid)
+                merge[aid] = item
+        logger.info(f"追补合并: {len(from_games)} + {len(from_search)} + {len(from_charts)} → {len(merge)} 款")
+
+        # 3. 补录当天缺失的排名
+        catchup_rank = 0
+        for rank, item in enumerate(merge.values(), 1):
+            game = db.query(Game).filter(Game.steam_app_id == item["appid"]).first()
+            gid = game.id if game else None
+            if gid and gid not in today_game_ids:
+                db.add(DailyTopSeller(game_id=gid, rank=rank, date=today))
+                catchup_rank += 1
+
+        # 4. 补充数据缺失的游戏（截图/描述为空）
+        incomplete = db.query(Game).filter(
+            (Game.screenshots == "[]") | (Game.screenshots.is_(None)) |
+            (Game.description == "") | (Game.description.is_(None)) |
+            (Game.reviews_synced_at.is_(None))
+        ).limit(50).all()
+
+        detail_ok = 0
+        img_ok = 0
+        for game in incomplete:
+            try:
+                d = _try_fetch_details(game.steam_app_id)
+                if d:
+                    if not game.screenshots or game.screenshots == "[]":
+                        game.screenshots = d.get("screenshots", "[]")
+                        img_ok += 1
+                    if not game.description:
+                        game.description = d.get("description", "")
+                    if not game.name_cn:
+                        game.name_cn = d.get("name_cn", "")
+                    if not game.tags and d.get("tags"):
+                        for tag_name in d["tags"]:
+                            tag = db.query(Tag).filter(Tag.name == tag_name).first()
+                            if not tag:
+                                tag = Tag(name=tag_name)
+                                db.add(tag); db.flush()
+                            db.execute(game_tag_assoc.insert().values(game_id=game.id, tag_id=tag.id))
+                    game.reviews_synced_at = datetime.now(timezone.utc)
+                    detail_ok += 1
+            except Exception as e:
+                logger.warning(f"追补详情 {game.steam_app_id} 失败: {e}")
+
+        db.commit()
+        from games import clear_hot_cache
+        clear_hot_cache()
+        from recommender import clear_recommender_cache
+        clear_recommender_cache()
+        logger.info(f"追补完成: 补排名 {catchup_rank}, 补详情 {detail_ok}, 补截图 {img_ok}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"追补同步失败: {e}")
+    finally:
+        db.close()
+
+
 def start_scheduler():
     global _scheduler
     _scheduler = BackgroundScheduler()
     _scheduler.add_job(sync_steam_data, "cron", hour="0,6,12,18", minute=17)
+    # 每天 19:17 追补同步
+    _scheduler.add_job(catchup_sync, "cron", hour=19, minute=17)
     # 每天凌晨 3 点清理过期日志
     from logger_config import clean_old_logs
     _scheduler.add_job(clean_old_logs, "cron", hour=3, minute=0)

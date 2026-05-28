@@ -1,8 +1,34 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 import json
 import random
-from sqlalchemy.orm import Session
+import threading
+from sqlalchemy.orm import Session, joinedload
 from database import Rating, Game, DailyTopSeller, RecommendationHistory
+
+# game-tag 映射缓存（5 分钟 TTL）
+_tag_cache = {}
+_tag_cache_lock = threading.Lock()
+
+def _get_game_tag_sets(db: Session) -> dict[int, set[str]]:
+    now = datetime.now()
+    with _tag_cache_lock:
+        if _tag_cache.get("expires", now) > now:
+            return _tag_cache["data"]
+    game_tag_sets = {}
+    for g in db.query(Game).options(joinedload(Game.tags)).all():
+        game_tag_sets[g.id] = {t.name for t in g.tags}
+    with _tag_cache_lock:
+        _tag_cache["data"] = game_tag_sets
+        _tag_cache["expires"] = now + timedelta(minutes=5)
+    return game_tag_sets
+
+
+def clear_recommender_cache():
+    """同步后清除缓存"""
+    global _tag_cache
+    with _tag_cache_lock:
+        _tag_cache.clear()
+
 
 def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
     rating_count = db.query(Rating).filter(Rating.user_id == user_id).count()
@@ -35,10 +61,7 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
     high_rated = [gid for gid, s in current_scores.items() if s >= 4]
     low_rated = [gid for gid, s in current_scores.items() if s <= 2]
 
-    all_games = db.query(Game).all()
-    game_tag_sets = {}
-    for g in all_games:
-        game_tag_sets[g.id] = {t.name for t in g.tags}
+    game_tag_sets = _get_game_tag_sets(db)
 
     # === Embedding 模式（LLM可用且覆盖率 > 50% 时启用） ===
     embedding_mode = False
@@ -52,7 +75,7 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
                 try:
                     embeddings[ge.game_id] = json.loads(ge.embedding)
                 except: pass
-            coverage = len(embeddings) / max(1, len(all_games))
+            coverage = len(embeddings) / max(1, len(game_tag_sets))
             if coverage > 0.5 and high_rated:
                 embedding_mode = True
     except: pass
@@ -74,10 +97,10 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
         if profile_vec and total_weight > 0:
             profile_vec = [v / total_weight for v in profile_vec]
             # 用 embedding 相似度替换标签相似度
-            for g in all_games:
-                if g.id in rated_game_ids or g.id not in embeddings:
+            for gid in game_tag_sets:
+                if gid in rated_game_ids or gid not in embeddings:
                     continue
-                tag_scores[g.id] = _cosine_similarity_list(profile_vec, embeddings[g.id])
+                tag_scores[gid] = _cosine_similarity_list(profile_vec, embeddings[gid])
 
     # 喜欢标签集
     high_rated_tags = set()
@@ -91,22 +114,21 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
 
     tag_scores = {}
     dislike_penalties = {}
-    for g in all_games:
-        if g.id in rated_game_ids:
+    for gid, g_tags in game_tag_sets.items():
+        if gid in rated_game_ids:
             continue
-        g_tags = game_tag_sets.get(g.id, set())
         # 正向：与喜欢标签的 Jaccard 相似度
         if high_rated_tags and g_tags:
             inter = len(high_rated_tags & g_tags)
             union = len(high_rated_tags | g_tags)
-            tag_scores[g.id] = inter / union if union > 0 else 0.0
+            tag_scores[gid] = inter / union if union > 0 else 0.0
         else:
-            tag_scores[g.id] = 0.0
+            tag_scores[gid] = 0.0
         # 负向：与不喜欢标签的 Jaccard 惩罚
         if low_rated_tags and g_tags:
             inter = len(low_rated_tags & g_tags)
             union = len(low_rated_tags | g_tags)
-            dislike_penalties[g.id] = inter / union if union > 0 else 0.0
+            dislike_penalties[gid] = inter / union if union > 0 else 0.0
 
     # === 协同过滤 ===
     cf_scores = {}
@@ -163,7 +185,7 @@ def get_similar_games(db: Session, game_id: int, limit: int = 6) -> list[int]:
         return []
 
     target_tags = {t.name for t in target_game.tags}
-    all_games = db.query(Game).filter(Game.id != game_id).all()
+    all_games = db.query(Game).options(joinedload(Game.tags)).filter(Game.id != game_id).all()
 
     # 标签 Jaccard 相似度
     tag_scores = {}

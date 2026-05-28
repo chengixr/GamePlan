@@ -286,7 +286,13 @@ def sync_steam_data():
                                 game.name_cn = d["name_cn"]
                             # 标签
                             if d.get("tags"):
+                                # 清除旧标签关联
+                                db.execute(game_tag_assoc.delete().where(game_tag_assoc.c.game_id == game.id))
+                                seen_tags = set()
                                 for tag_name in d["tags"]:
+                                    if tag_name in seen_tags:
+                                        continue
+                                    seen_tags.add(tag_name)
                                     tag = db.query(Tag).filter(Tag.name == tag_name).first()
                                     if not tag:
                                         tag = Tag(name=tag_name)
@@ -306,6 +312,8 @@ def sync_steam_data():
         db.commit()
         from games import clear_hot_cache
         clear_hot_cache()
+        from recommender import clear_recommender_cache
+        clear_recommender_cache()
         logger.info(f"同步完成: 新增 {synced}, 更新 {updated}, 下载图片 {img_ok}, 共 {len(items)} 款")
     except Exception as e:
         db.rollback()

@@ -264,7 +264,7 @@ onMounted(async () => {
   display: block;
   width: calc(100% + 48px);
   max-width: 1100px;
-  margin: 28px -24px;
+  margin: 16px -24px;
   border-radius: 12px;
   object-fit: contain;
 }
@@ -272,7 +272,7 @@ onMounted(async () => {
   display: block;
   width: calc(100% + 48px);
   max-width: 1100px;
-  margin: 28px -24px;
+  margin: 16px -24px;
   border-radius: 12px;
 }
 .desc :deep(ul), .desc :deep(.bb_ul) { padding-left: 22px; margin: 10px 0; }

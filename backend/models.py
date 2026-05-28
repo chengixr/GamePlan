@@ -21,6 +21,7 @@ class UserResponse(BaseModel):
     username: str
     nickname: str = ""
     avatar: str = "1"
+    is_admin: bool = False
 
 class GameResponse(BaseModel):
     id: int
@@ -45,3 +46,21 @@ class PaginatedResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+class AdminUserResponse(BaseModel):
+    id: int
+    username: str
+    nickname: str
+    avatar: str = "1"
+    is_active: bool = True
+    rating_count: int = 0
+    created_at: str = ""
+
+class AdminSyncStatusResponse(BaseModel):
+    running: bool
+    last_complete: str = ""
+    next_scheduled: str = ""
+
+class AdminLogResponse(BaseModel):
+    lines: list[str]
+    total: int

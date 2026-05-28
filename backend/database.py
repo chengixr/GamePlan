@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, event, Column, Integer, String, Text, DateTime, Date, ForeignKey, Table, UniqueConstraint
+from sqlalchemy import create_engine, event, Column, Integer, String, Text, DateTime, Date, Boolean, ForeignKey, Table, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime, timezone
 from config import DATABASE_URL
@@ -29,7 +29,9 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False)
     nickname = Column(String(50), default="")
     password_hash = Column(String(128), nullable=False)
+    is_admin = Column(Boolean, default=False)
     avatar = Column(String(10), default="1")
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class Game(Base):

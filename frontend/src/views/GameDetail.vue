@@ -266,13 +266,20 @@ onMounted(async () => {
   font-size: 0;
   margin: 8px 0;
 }
-.desc :deep(img) {
+.desc :deep(img.bb_img) {
   display: block;
-  width: calc(100% + 48px);
-  max-width: 1100px;
+  height: 478px;
+  width: auto;
+  max-width: calc(100% + 48px);
   margin: 8px -24px;
   border-radius: 12px;
-  object-fit: contain;
+  object-fit: cover;
+}
+.desc :deep(img) {
+  display: block;
+  max-width: 100%;
+  margin: 8px auto;
+  border-radius: 8px;
 }
 .desc :deep(video) {
   display: block;

@@ -2,21 +2,39 @@ const BASE = '/api'
 
 async function request(path, options = {}) {
   const headers = { ...options.headers }
-  // 仅对带 body 的请求设置 Content-Type
   if (options.body && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json'
   }
-  const res = await fetch(`${BASE}${path}`, {
-    credentials: 'include',
-    headers,
-    ...options,
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10000)
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      credentials: 'include',
+      headers,
+      signal: controller.signal,
+      ...options,
+    })
+    clearTimeout(timeout)
+    return handleResponse(res)
+  } catch (e) {
+    clearTimeout(timeout)
+    if (e.name === 'AbortError') throw new Error('请求超时，请重试')
+    throw e
+  }
+}
+
+async function handleResponse(res) {
   if (!res.ok) {
     if (res.status === 401) {
       throw new Error('请先登录')
     }
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || `请求失败 (${res.status})`)
+    // Pydantic 校验错误返回数组，提取第一条消息
+    let msg = err.detail || `请求失败 (${res.status})`
+    if (Array.isArray(msg)) {
+      msg = msg.map(e => e.msg || e.message || JSON.stringify(e)).join('; ')
+    }
+    throw new Error(msg)
   }
   return res.json()
 }

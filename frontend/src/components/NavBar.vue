@@ -53,7 +53,8 @@ onMounted(() => document.addEventListener('click', closeMenu))
 onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 
 async function onLogout() {
-  await auth.logout()
+  try { await auth.logout() } catch {}
+  auth.user = null
   router.push('/login')
   open.value = false
 }

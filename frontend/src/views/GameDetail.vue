@@ -268,7 +268,7 @@ onMounted(async () => {
 }
 .desc :deep(img.bb_img) {
   display: block;
-  height: 478px;
+  height: 128px;
   width: auto;
   max-width: calc(100% + 48px);
   margin: 8px -24px;

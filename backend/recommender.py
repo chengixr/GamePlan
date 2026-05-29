@@ -23,15 +23,34 @@ def _get_game_tag_sets(db: Session) -> dict[int, set[str]]:
     return game_tag_sets
 
 
+# 推荐结果缓存（5 分钟 TTL，按用户隔离）
+_rec_cache = {}
+_rec_cache_lock = threading.Lock()
+
+# 评分数据缓存（2 分钟，减少同步期间的 DB 压力）
+_ratings_cache = {}
+_ratings_cache_lock = threading.Lock()
+
 def clear_recommender_cache():
     """同步后清除缓存"""
-    global _tag_cache
+    global _tag_cache, _rec_cache, _ratings_cache
     with _tag_cache_lock:
         _tag_cache.clear()
+    with _rec_cache_lock:
+        _rec_cache.clear()
+    with _ratings_cache_lock:
+        _ratings_cache.clear()
 
 
 def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
     rating_count = db.query(Rating).filter(Rating.user_id == user_id).count()
+
+    # 推荐结果缓存（5 分钟）：避免同步期间重复计算超时
+    cache_key = f"rec_{user_id}_{rating_count}"
+    with _rec_cache_lock:
+        entry = _rec_cache.get(cache_key)
+        if entry and entry["expires"] > datetime.now():
+            return entry["total"], entry["ids"]
 
     # 冷启动：用 user_id + 日期做种子，保证同日同用户分页稳定
     if rating_count < 5:
@@ -47,9 +66,21 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
         rng = random.Random(f"{user_id}-{today.isoformat()}")
         rng.shuffle(game_ids)
         game_ids = game_ids[:20]
-        return len(game_ids), game_ids
+        result = (len(game_ids), game_ids)
+        with _rec_cache_lock:
+            _rec_cache[cache_key] = {"total": result[0], "ids": result[1], "expires": datetime.now() + timedelta(minutes=5)}
+        return result
 
-    all_ratings = db.query(Rating).all()
+    # 评分数据缓存读取
+    now = datetime.now()
+    with _ratings_cache_lock:
+        if _ratings_cache.get("expires", now) > now:
+            all_ratings = _ratings_cache["data"]
+        else:
+            all_ratings = db.query(Rating).all()
+            _ratings_cache["data"] = all_ratings
+            _ratings_cache["expires"] = now + timedelta(minutes=2)
+
     user_scores = {}
     for r in all_ratings:
         user_scores.setdefault(r.user_id, {})[r.game_id] = r.score
@@ -175,7 +206,11 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
     sorted_games = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
     game_ids = [gid for gid, _ in sorted_games if gid not in rated_game_ids]
 
-    return len(game_ids), game_ids
+    # 保存到缓存
+    result = (len(game_ids), game_ids)
+    with _rec_cache_lock:
+        _rec_cache[cache_key] = {"total": result[0], "ids": result[1], "expires": datetime.now() + timedelta(minutes=5)}
+    return result
 
 
 def get_similar_games(db: Session, game_id: int, limit: int = 6) -> list[int]:

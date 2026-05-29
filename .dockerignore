@@ -1,38 +1,40 @@
-node_modules/
-.git/
+node_modules
+.git
 .gitignore
 *.md
-docs/
-.claude/
-.code-review-graph/
-
-# 构建产物（将在镜像中重新构建）
-frontend/dist/
+!CLAUDE.md
 
 # Python
-__pycache__/
+__pycache__
 *.pyc
 *.pyo
-backend/logs/
-backend/gameplan.db
-backend/gameplan.db-*
+*.egg-info
+.venv
+venv
+
+# 数据库文件（通过 volume 挂载）
+*.db
+*.db-wal
+*.db-shm
 
 # 日志
-*.log
+backend/logs/
 
-# 环境变量
-.env
-.env.local
+# 静态图片（Steam 同步产物）
+backend/static/images/
 
 # IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+.vscode
+.idea
 
-# OS
-.DS_Store
-Thumbs.db
+# 构建产物
+frontend/dist/
 
-# 临时文件
-/tmp/
+# Claude
+.claude/
+
+# Docs
+docs/
+
+# Misc
+.code-review-graph

@@ -17,6 +17,6 @@
     "enabled": true
   },
   "database": "gameplan.db",
-  "secret_key": "dev-secret-change-in-production",
+  "secret_key": "",
   "session_days": 7
 }

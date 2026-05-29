@@ -1,26 +1,17 @@
 services:
   gameplan:
     build: .
+    image: gameplan:latest
     container_name: gameplan
     ports:
       - "8000:8000"
     volumes:
-      # SQLite 数据库持久化
-      - ./data:/app/backend/data
-      # Steam 游戏封面图片持久化
-      - ./images:/app/backend/static/images
+      - gameplan_data:/app/data
     environment:
-      # 会话密钥（生产环境务必修改）
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      # API Key 方式一：明文（不推荐）
-      # - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
-      # API Key 方式二：加密（推荐，与 MASTER_KEY 配合使用）
-      - MASTER_KEY=${MASTER_KEY:-}
-      - DEEPSEEK_API_KEY_ENC=${DEEPSEEK_API_KEY_ENC:-}
-      # 可选配置
-      - LLM_ENABLED=${LLM_ENABLED:-true}
-      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
-      - SESSION_DAYS=${SESSION_DAYS:-7}
-      # 数据库路径（映射到持久化卷）
-      - DATABASE_URL=sqlite:////app/backend/data/gameplan.db
+      - SECRET_KEY=change-me-to-a-random-string
+      - DEEPSEEK_API_KEY=sk-your-deepseek-key
+      - LLM_ENABLED=true
     restart: unless-stopped
+
+volumes:
+  gameplan_data:

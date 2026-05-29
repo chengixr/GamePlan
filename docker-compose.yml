@@ -10,9 +10,13 @@ services:
       # Steam 游戏封面图片持久化
       - ./images:/app/backend/static/images
     environment:
-      # 必须覆盖的敏感配置
+      # 会话密钥（生产环境务必修改）
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      # API Key 方式一：明文（不推荐）
+      # - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      # API Key 方式二：加密（推荐，与 MASTER_KEY 配合使用）
+      - MASTER_KEY=${MASTER_KEY:-}
+      - DEEPSEEK_API_KEY_ENC=${DEEPSEEK_API_KEY_ENC:-}
       # 可选配置
       - LLM_ENABLED=${LLM_ENABLED:-true}
       - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}

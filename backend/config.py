@@ -28,6 +28,21 @@ SESSION_DAYS = int(os.environ.get("SESSION_DAYS", _cfg.get("session_days", 7)))
 _llm = _cfg.get("llm", {})
 LLM_ENABLED = os.environ.get("LLM_ENABLED", str(_llm.get("enabled", False))).lower() == "true"
 LLM_API_BASE = os.environ.get("DEEPSEEK_API_BASE", _llm.get("api_base", "https://api.deepseek.com/v1"))
-LLM_API_KEY = os.environ.get("DEEPSEEK_API_KEY", _llm.get("api_key", ""))
+_raw_api_key = os.environ.get("DEEPSEEK_API_KEY", _llm.get("api_key", ""))
+_api_key_enc = os.environ.get("DEEPSEEK_API_KEY_ENC", "")
+_master_key = os.environ.get("MASTER_KEY", "")
+
+if _api_key_enc and _master_key:
+    from crypto_utils import decrypt
+    try:
+        LLM_API_KEY = decrypt(_api_key_enc, _master_key)
+    except Exception:
+        import sys
+        print("警告: API Key 解密失败，请检查 MASTER_KEY 和 DEEPSEEK_API_KEY_ENC", file=sys.stderr)
+        LLM_API_KEY = ""
+elif _raw_api_key:
+    LLM_API_KEY = _raw_api_key
+else:
+    LLM_API_KEY = ""
 LLM_MODEL = os.environ.get("DEEPSEEK_MODEL", _llm.get("model", "deepseek-chat"))
 LLM_EMBEDDING_MODEL = os.environ.get("DEEPSEEK_EMBEDDING", _llm.get("embedding_model", "deepseek-embed"))

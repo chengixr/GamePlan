@@ -41,6 +41,8 @@ export const api = {
     request(`/admin/users?search=${encodeURIComponent(search)}&page=${page}&page_size=${pageSize}`),
   adminUserStatus: (userId, isActive) =>
     request(`/admin/users/${userId}/status`, { method: 'PUT', body: JSON.stringify({ is_active: isActive }) }),
+  adminUserAdmin: (userId, isAdmin) =>
+    request(`/admin/users/${userId}/admin`, { method: 'PUT', body: JSON.stringify({ is_admin: isAdmin }) }),
   adminDeleteUser: (userId) =>
     request(`/admin/users/${userId}`, { method: 'DELETE' }),
   adminUserRatings: (userId) =>

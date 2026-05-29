@@ -53,6 +53,7 @@ class AdminUserResponse(BaseModel):
     nickname: str
     avatar: str = "1"
     is_active: bool = True
+    is_admin: bool = False
     rating_count: int = 0
     created_at: str = ""
 

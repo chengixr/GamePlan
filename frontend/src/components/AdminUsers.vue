@@ -8,7 +8,7 @@
     <div class="au-table-wrap" v-if="!loading">
       <table class="au-table" v-if="users.length">
         <thead>
-          <tr><th>ID</th><th>用户名</th><th>昵称</th><th>评分</th><th>注册时间</th><th>状态</th><th>操作</th></tr>
+          <tr><th>ID</th><th>用户名</th><th>昵称</th><th>评分</th><th>权限</th><th>注册时间</th><th>状态</th><th>操作</th></tr>
         </thead>
         <tbody>
           <tr v-for="u in users" :key="u.id" :class="{ inactive: !u.is_active }">
@@ -16,10 +16,12 @@
             <td>{{ u.username }}</td>
             <td>{{ u.nickname }}</td>
             <td>{{ u.rating_count }}</td>
+            <td><span class="au-admin-tag" v-if="u.is_admin">管理员</span><span v-else>-</span></td>
             <td>{{ u.created_at }}</td>
             <td><span class="au-status" :class="{ off: !u.is_active }">{{ u.is_active ? '启用' : '禁用' }}</span></td>
             <td class="au-actions">
               <button class="au-action-btn" @click="toggleStatus(u)">{{ u.is_active ? '禁用' : '启用' }}</button>
+              <button class="au-action-btn admin" @click="toggleAdmin(u)">{{ u.is_admin ? '取消授权' : '授权管理' }}</button>
               <button class="au-action-btn" @click="viewRatings(u)">评分</button>
               <button class="au-action-btn danger" @click="deleteUser(u)">删除</button>
             </td>
@@ -81,6 +83,14 @@ async function toggleStatus(u) {
   try {
     await api.adminUserStatus(u.id, newStatus)
     u.is_active = newStatus
+  } catch (e) { alert(e.message) }
+}
+
+async function toggleAdmin(u) {
+  const newAdmin = !u.is_admin
+  try {
+    await api.adminUserAdmin(u.id, newAdmin)
+    u.is_admin = newAdmin
   } catch (e) { alert(e.message) }
 }
 
@@ -151,7 +161,9 @@ onMounted(() => loadUsers())
   cursor: pointer; transition: all 0.15s;
 }
 .au-action-btn:hover { color: var(--neon-cyan); border-color: rgba(0,229,255,0.2); }
+.au-action-btn.admin:hover { color: var(--neon-amber); border-color: rgba(255,184,0,0.2); }
 .au-action-btn.danger:hover { color: var(--neon-magenta); border-color: rgba(255,45,120,0.2); }
+.au-admin-tag { font-size: 11px; padding: 2px 8px; border-radius: 3px; background: rgba(255,184,0,0.12); color: var(--neon-amber); }
 
 .au-pager { display: flex; align-items: center; gap: 14px; margin-top: 20px; justify-content: center; }
 .au-pager button {

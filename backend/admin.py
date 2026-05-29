@@ -35,7 +35,7 @@ def list_users(
         count = db.query(func.count(Rating.id)).filter(Rating.user_id == u.id).scalar()
         items.append(AdminUserResponse(
             id=u.id, username=u.username, nickname=u.nickname or u.username,
-            avatar=u.avatar or "1", is_active=u.is_active, rating_count=count,
+            avatar=u.avatar or "1", is_active=u.is_active, is_admin=u.is_admin, rating_count=count,
             created_at=u.created_at.strftime("%Y-%m-%d %H:%M") if u.created_at else ""
         ).model_dump())
     return {"items": items, "total": total, "page": page, "page_size": page_size}
@@ -55,6 +55,22 @@ def toggle_user_status(
     user.is_active = body.get("is_active", True)
     db.commit()
     return {"status": "ok", "is_active": user.is_active}
+
+@router.put("/users/{user_id}/admin")
+def toggle_user_admin(
+    user_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "用户不存在")
+    if user.id == admin.id:
+        raise HTTPException(400, "不能修改自己的管理员权限")
+    user.is_admin = body.get("is_admin", False)
+    db.commit()
+    return {"status": "ok", "is_admin": user.is_admin}
 
 @router.delete("/users/{user_id}")
 def delete_user(

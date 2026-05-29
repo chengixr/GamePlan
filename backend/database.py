@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, event, Column, Integer, String, Text, DateTime, Date, Boolean, ForeignKey, Table, UniqueConstraint
+from sqlalchemy import create_engine, event, Column, Integer, String, Text, DateTime, Date, Boolean, Float, ForeignKey, Table, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime, timezone
 from config import DATABASE_URL
@@ -56,6 +56,7 @@ class Tag(Base):
     __tablename__ = "tags"
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), unique=True, nullable=False)
+    weight = Column(Float, default=1.0)
     games = relationship("Game", secondary=game_tag_assoc, back_populates="tags")
 
 class Rating(Base):

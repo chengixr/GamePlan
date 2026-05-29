@@ -4,23 +4,36 @@ import random
 import threading
 from sqlalchemy.orm import Session, joinedload
 from database import Rating, Game, DailyTopSeller
+from tag_library import get_tag_weight
 
 # game-tag 映射缓存（5 分钟 TTL）
 _tag_cache = {}
 _tag_cache_lock = threading.Lock()
 
-def _get_game_tag_sets(db: Session) -> dict[int, set[str]]:
+def _get_game_tag_sets(db: Session) -> dict[int, dict[str, float]]:
+    """返回 {game_id: {tag_name: weight}} 加权标签映射"""
     now = datetime.now()
     with _tag_cache_lock:
         if _tag_cache.get("expires", now) > now:
             return _tag_cache["data"]
     game_tag_sets = {}
     for g in db.query(Game).options(joinedload(Game.tags)).all():
-        game_tag_sets[g.id] = {t.name for t in g.tags}
+        game_tag_sets[g.id] = {t.name: get_tag_weight(t.name) for t in g.tags}
     with _tag_cache_lock:
         _tag_cache["data"] = game_tag_sets
         _tag_cache["expires"] = now + timedelta(minutes=5)
     return game_tag_sets
+
+
+def _weighted_jaccard(tags_a: dict[str, float], tags_b: dict[str, float]) -> float:
+    """加权 Jaccard 相似度"""
+    common = set(tags_a.keys()) & set(tags_b.keys())
+    all_keys = set(tags_a.keys()) | set(tags_b.keys())
+    if not all_keys:
+        return 0.0
+    inter_w = sum(min(tags_a[k], tags_b[k]) for k in common)
+    union_w = sum(max(tags_a.get(k, 0), tags_b.get(k, 0)) for k in all_keys)
+    return inter_w / union_w if union_w > 0 else 0.0
 
 
 # 推荐结果缓存（5 分钟 TTL，按用户隔离）
@@ -71,6 +84,8 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
             _rec_cache[cache_key] = {"total": result[0], "ids": result[1], "expires": datetime.now() + timedelta(minutes=5)}
         return result
 
+    game_tag_sets = _get_game_tag_sets(db)
+
     # 评分数据缓存读取（存储原始元组避免 DetachedInstanceError）
     now = datetime.now()
     with _ratings_cache_lock:
@@ -91,8 +106,6 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
     # === 标签相似度（正向） ===
     high_rated = [gid for gid, s in current_scores.items() if s >= 4]
     low_rated = [gid for gid, s in current_scores.items() if s <= 2]
-
-    game_tag_sets = _get_game_tag_sets(db)
 
     # === Embedding 模式（LLM可用且覆盖率 > 50% 时启用） ===
     embedding_mode = False
@@ -133,33 +146,25 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
                     continue
                 tag_scores[gid] = _cosine_similarity_list(profile_vec, embeddings[gid])
 
-    # 喜欢标签集
-    high_rated_tags = set()
+    # 喜欢标签集（带权重累加，取最高权重）
+    high_rated_tags = {}
     for gid in high_rated:
-        high_rated_tags |= game_tag_sets.get(gid, set())
+        for tag, w in game_tag_sets.get(gid, {}).items():
+            high_rated_tags[tag] = max(high_rated_tags.get(tag, 0), w)
 
     # 不喜欢标签集
-    low_rated_tags = set()
+    low_rated_tags = {}
     for gid in low_rated:
-        low_rated_tags |= game_tag_sets.get(gid, set())
+        for tag, w in game_tag_sets.get(gid, {}).items():
+            low_rated_tags[tag] = max(low_rated_tags.get(tag, 0), w)
 
     tag_scores = {}
     dislike_penalties = {}
     for gid, g_tags in game_tag_sets.items():
         if gid in rated_game_ids:
             continue
-        # 正向：与喜欢标签的 Jaccard 相似度
-        if high_rated_tags and g_tags:
-            inter = len(high_rated_tags & g_tags)
-            union = len(high_rated_tags | g_tags)
-            tag_scores[gid] = inter / union if union > 0 else 0.0
-        else:
-            tag_scores[gid] = 0.0
-        # 负向：与不喜欢标签的 Jaccard 惩罚
-        if low_rated_tags and g_tags:
-            inter = len(low_rated_tags & g_tags)
-            union = len(low_rated_tags | g_tags)
-            dislike_penalties[gid] = inter / union if union > 0 else 0.0
+        tag_scores[gid] = _weighted_jaccard(high_rated_tags, g_tags) if high_rated_tags else 0.0
+        dislike_penalties[gid] = _weighted_jaccard(low_rated_tags, g_tags) if low_rated_tags else 0.0
 
     # === 协同过滤 ===
     cf_scores = {}
@@ -222,19 +227,14 @@ def get_similar_games(db: Session, game_id: int, limit: int = 6) -> list[int]:
     if not target_game:
         return []
 
-    target_tags = {t.name for t in target_game.tags}
+    target_tags = {t.name: get_tag_weight(t.name) for t in target_game.tags}
     all_games = db.query(Game).options(joinedload(Game.tags)).filter(Game.id != game_id).all()
 
-    # 标签 Jaccard 相似度
+    # 标签加权 Jaccard 相似度
     tag_scores = {}
     for g in all_games:
-        g_tags = {t.name for t in g.tags}
-        if not target_tags or not g_tags:
-            tag_scores[g.id] = 0.0
-        else:
-            inter = len(target_tags & g_tags)
-            union = len(target_tags | g_tags)
-            tag_scores[g.id] = inter / union if union > 0 else 0.0
+        g_tags = {t.name: get_tag_weight(t.name) for t in g.tags}
+        tag_scores[g.id] = _weighted_jaccard(target_tags, g_tags)
 
     # 协同过滤：找到评分过当前游戏的用户，看他们还喜欢什么
     all_ratings = db.query(Rating).all()

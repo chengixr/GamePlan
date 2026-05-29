@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from config import BACKEND_PORT, FRONTEND_PORT
-from database import init_db
+from database import init_db, SessionLocal
 from seed_data import seed
 from logger_config import setup_logging, clean_old_logs
 
@@ -27,6 +27,14 @@ async def lifespan(app: FastAPI):
     seed()
     clean_old_logs()
     start_scheduler()
+    # 预热缓存
+    from recommender import _get_game_tag_sets
+    db = SessionLocal()
+    try:
+        _get_game_tag_sets(db)
+        logger.info("缓存预热完成")
+    finally:
+        db.close()
     logger.info("GamePlan 服务启动")
     yield
     shutdown_scheduler()

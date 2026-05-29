@@ -268,12 +268,11 @@ onMounted(async () => {
 }
 .desc :deep(img.bb_img) {
   display: block;
-  height: 128px;
+  max-height: 400px;
   width: auto;
-  max-width: calc(100% + 48px);
-  margin: 8px -24px;
-  border-radius: 12px;
-  object-fit: cover;
+  max-width: 100%;
+  margin: 8px auto;
+  border-radius: 8px;
 }
 .desc :deep(img) {
   display: block;

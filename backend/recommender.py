@@ -185,13 +185,25 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
         for gid, sims in cf_accum.items():
             cf_scores[gid] = sum(sims) / len(sims) if sims else 0.0
 
-    # === 混合打分（含不喜欢降权） ===
+    # === 加载 Steam 评价数据 ===
+    review_boost = {}
+    all_games_reviews = db.query(Game.id, Game.review_summary).all()
+    for gid, summary in all_games_reviews:
+        try:
+            rd = json.loads(summary or "{}")
+            total = rd.get("total", 0)
+            if total >= 50:  # 至少 50 条评价才计入
+                review_boost[gid] = (rd.get("positive", 0) / total) * 0.15
+        except:
+            pass
+
+    # === 混合打分（含不喜欢降权 + Steam 评价加成） ===
     DISLIKE_PENALTY_WEIGHT = 0.3
     final_scores = {}
     for gid in set(list(tag_scores.keys()) + list(cf_scores.keys())):
         score = tag_scores.get(gid, 0) * 0.6 + cf_scores.get(gid, 0) * 0.4
         penalty = dislike_penalties.get(gid, 0) * DISLIKE_PENALTY_WEIGHT
-        final_scores[gid] = max(0, score - penalty)
+        final_scores[gid] = max(0, score - penalty + review_boost.get(gid, 0))
 
     # === 去除已打分 ===
     sorted_games = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
@@ -242,10 +254,20 @@ def get_similar_games(db: Session, game_id: int, limit: int = 6) -> list[int]:
     for gid in cf_scores:
         cf_scores[gid] = cf_scores[gid] / max_cf
 
+    # Steam 评价加成
+    review_boost_sim = {}
+    for g in all_games:
+        try:
+            rd = json.loads(g.review_summary or "{}")
+            total = rd.get("total", 0)
+            if total >= 50:
+                review_boost_sim[g.id] = (rd.get("positive", 0) / total) * 0.15
+        except: pass
+
     # 混合
     final = {}
     for g in all_games:
-        final[g.id] = tag_scores.get(g.id, 0) * 0.6 + cf_scores.get(g.id, 0) * 0.4
+        final[g.id] = tag_scores.get(g.id, 0) * 0.6 + cf_scores.get(g.id, 0) * 0.4 + review_boost_sim.get(g.id, 0)
 
     sorted_games = sorted(final.items(), key=lambda x: x[1], reverse=True)
     return [gid for gid, _ in sorted_games[:limit]]

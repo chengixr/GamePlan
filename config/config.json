@@ -12,7 +12,7 @@
   },
   "llm": {
     "api_base": "https://api.deepseek.com",
-    "api_key": "sk-6999ca414ccf4633981312ef1f80ba28",
+    "api_key": "",
     "model": "deepseek-chat",
     "enabled": true
   },

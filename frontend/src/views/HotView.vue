@@ -19,20 +19,31 @@
       v-for="(game, idx) in displayGames"
       :key="game.id"
       :game="game"
-      :rank="idx + 1"
+      :rank="(currentPageNum - 1) * pageSize + idx + 1"
       :show-rating="!!auth.user"
     />
 
     <!-- 分页器 -->
-    <div class="pager" v-if="totalPages > 1">
-      <button class="page-btn" :disabled="currentPageNum <= 1" @click="goPage(1)">首页</button>
-      <button class="page-btn" :disabled="currentPageNum <= 1" @click="goPage(currentPageNum - 1)">上一页</button>
-      <template v-for="p in visiblePages" :key="p">
-        <span v-if="p === '...'" class="page-ellipsis">...</span>
-        <button v-else class="page-btn" :class="{ active: p === currentPageNum }" @click="goPage(p)">{{ p }}</button>
+    <div class="pager" v-if="total > 0">
+      <select v-model="pageSize" class="page-size-select" @change="onPageSizeChange">
+        <option :value="20">20条/页</option>
+        <option :value="50">50条/页</option>
+        <option :value="100">100条/页</option>
+      </select>
+      <template v-if="totalPages > 1">
+        <button class="page-btn" :disabled="currentPageNum <= 1" @click="goPage(1)">首页</button>
+        <button class="page-btn" :disabled="currentPageNum <= 1" @click="goPage(currentPageNum - 1)">上一页</button>
+        <template v-for="p in visiblePages" :key="p">
+          <span v-if="p === '...'" class="page-ellipsis">...</span>
+          <button v-else class="page-btn" :class="{ active: p === currentPageNum }" @click="goPage(p)">{{ p }}</button>
+        </template>
+        <button class="page-btn" :disabled="currentPageNum >= totalPages" @click="goPage(currentPageNum + 1)">下一页</button>
+        <button class="page-btn" :disabled="currentPageNum >= totalPages" @click="goPage(totalPages)">末页</button>
       </template>
-      <button class="page-btn" :disabled="currentPageNum >= totalPages" @click="goPage(currentPageNum + 1)">下一页</button>
-      <button class="page-btn" :disabled="currentPageNum >= totalPages" @click="goPage(totalPages)">末页</button>
+      <span class="page-jump" v-if="totalPages > 3">
+        跳至<input v-model="jumpPage" class="jump-input" @keyup.enter="doJump" />页
+        <button class="page-btn" @click="doJump">GO</button>
+      </span>
       <span class="page-info">共 {{ total }} 款</span>
     </div>
 
@@ -92,7 +103,8 @@ import { useAuthStore } from '../stores/auth'
 const store = useGamesStore()
 const auth = useAuthStore()
 
-const pageSize = 20
+const pageSize = ref(20)
+const jumpPage = ref('')
 const loading = ref(false)
 const sidebarOpen = ref(false)
 const isHistoryMode = ref(false)
@@ -138,7 +150,7 @@ const total = computed(() =>
 const currentPageNum = computed(() =>
   isHistoryMode.value ? store.historyPage : store.hotPage
 )
-const totalPages = computed(() => Math.ceil(total.value / pageSize))
+const totalPages = computed(() => Math.ceil(total.value / pageSize.value))
 
 // 页码显示：当前页前后各 2 页
 const visiblePages = computed(() => {
@@ -159,11 +171,26 @@ const visiblePages = computed(() => {
 
 function goPage(p) {
   if (p < 1 || p > totalPages.value || p === currentPageNum.value) return
+  loadPage(p)
+}
+
+function doJump() {
+  const p = parseInt(jumpPage.value)
+  if (isNaN(p) || p < 1 || p > totalPages.value) { jumpPage.value = ''; return }
+  loadPage(p)
+  jumpPage.value = ''
+}
+
+function onPageSizeChange() {
+  loadPage(1)
+}
+
+function loadPage(p) {
   loading.value = true
   if (isHistoryMode.value) {
-    store.loadHistory(historyDate.value, p, pageSize).finally(() => loading.value = false)
+    store.loadHistory(historyDate.value, p, pageSize.value).finally(() => loading.value = false)
   } else {
-    store.loadHot(p, pageSize).finally(() => loading.value = false)
+    store.loadHot(p, pageSize.value).finally(() => loading.value = false)
   }
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -181,7 +208,7 @@ async function loadHistoryDate(d) {
   isHistoryMode.value = true
   sidebarOpen.value = false
   loading.value = true
-  await store.loadHistory(d, 1, pageSize)
+  await store.loadHistory(d, 1, pageSize.value)
   loading.value = false
 }
 
@@ -189,7 +216,7 @@ async function loadHistoryDate(d) {
 onMounted(async () => {
   await auth.checkAuth()
   if (auth.user) await store.loadMyRatings()
-  await store.loadHot(1, pageSize)
+  await store.loadHot(1, pageSize.value)
 })
 </script>
 
@@ -253,6 +280,29 @@ onMounted(async () => {
 }
 .page-btn:disabled { opacity: 0.3; cursor: default; }
 .page-ellipsis { padding: 0 4px; color: var(--text-muted); font-size: 13px; }
+.page-size-select {
+  padding: 5px 8px;
+  background: var(--surface-raised);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  margin-right: 8px;
+}
+.page-jump { margin-left: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+.jump-input {
+  width: 44px; padding: 4px 6px;
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+}
+.jump-input:focus { border-color: var(--neon-cyan); }
 .page-info { margin-left: 12px; font-size: 12px; color: var(--text-muted); }
 .loading-spinner {
   display: inline-block; width: 24px; height: 24px;

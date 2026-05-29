@@ -23,10 +23,17 @@
       :show-rating="!!auth.user"
     />
 
-    <!-- 加载指示器（无限滚动） -->
-    <div ref="sentinel" class="scroll-sentinel">
-      <span v-if="loading" class="loading-spinner"></span>
-      <span v-else-if="!hasMore" class="end-text">— 已加载全部 —</span>
+    <!-- 分页器 -->
+    <div class="pager" v-if="totalPages > 1">
+      <button class="page-btn" :disabled="currentPageNum <= 1" @click="goPage(1)">首页</button>
+      <button class="page-btn" :disabled="currentPageNum <= 1" @click="goPage(currentPageNum - 1)">上一页</button>
+      <template v-for="p in visiblePages" :key="p">
+        <span v-if="p === '...'" class="page-ellipsis">...</span>
+        <button v-else class="page-btn" :class="{ active: p === currentPageNum }" @click="goPage(p)">{{ p }}</button>
+      </template>
+      <button class="page-btn" :disabled="currentPageNum >= totalPages" @click="goPage(currentPageNum + 1)">下一页</button>
+      <button class="page-btn" :disabled="currentPageNum >= totalPages" @click="goPage(totalPages)">末页</button>
+      <span class="page-info">共 {{ total }} 款</span>
     </div>
 
     <!-- 历史记录侧边栏 -->
@@ -77,7 +84,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import GameCard from '../components/GameCard.vue'
 import { useGamesStore } from '../stores/games'
 import { useAuthStore } from '../stores/auth'
@@ -122,45 +129,43 @@ const calDays = computed(() => {
   return cells
 })
 
-const sentinel = ref(null)
-let observer = null
-
 const displayGames = computed(() =>
   isHistoryMode.value ? store.historyGames : store.hotGames
 )
-const currentPage = computed(() =>
+const total = computed(() =>
+  isHistoryMode.value ? store.historyTotal : store.hotTotal
+)
+const currentPageNum = computed(() =>
   isHistoryMode.value ? store.historyPage : store.hotPage
 )
-const hasMore = computed(() => {
-  const total = isHistoryMode.value ? store.historyTotal : store.hotTotal
-  const games = displayGames.value
-  return games.length < total
+const totalPages = computed(() => Math.ceil(total.value / pageSize))
+
+// 页码显示：当前页前后各 2 页
+const visiblePages = computed(() => {
+  const pages = []
+  const tp = totalPages.value
+  const cp = currentPageNum.value
+  if (tp <= 7) {
+    for (let i = 1; i <= tp; i++) pages.push(i)
+  } else {
+    pages.push(1)
+    if (cp > 3) pages.push('...')
+    for (let i = Math.max(2, cp - 1); i <= Math.min(tp - 1, cp + 1); i++) pages.push(i)
+    if (cp < tp - 2) pages.push('...')
+    pages.push(tp)
+  }
+  return pages
 })
 
-// 无限滚动
-function setupObserver() {
-  if (observer) observer.disconnect()
-  observer = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting && hasMore.value && !loading.value) {
-      loadMore()
-    }
-  }, { rootMargin: '200px' })
-  if (sentinel.value) observer.observe(sentinel.value)
-}
-
-async function loadMore() {
+function goPage(p) {
+  if (p < 1 || p > totalPages.value || p === currentPageNum.value) return
   loading.value = true
-  const nextPage = currentPage.value + 1
   if (isHistoryMode.value) {
-    await store.loadHistory(historyDate.value, nextPage, pageSize, true)
+    store.loadHistory(historyDate.value, p, pageSize).finally(() => loading.value = false)
   } else {
-    await store.loadHot(nextPage, pageSize, true)
+    store.loadHot(p, pageSize).finally(() => loading.value = false)
   }
-  loading.value = false
-  // 重新挂载 observer
-  setTimeout(() => {
-    if (sentinel.value && observer) observer.observe(sentinel.value)
-  }, 100)
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 // 侧边栏
@@ -175,24 +180,16 @@ async function loadHistoryDate(d) {
   historyDate.value = d
   isHistoryMode.value = true
   sidebarOpen.value = false
-  store.historyGames = []
   loading.value = true
   await store.loadHistory(d, 1, pageSize)
   loading.value = false
-  setTimeout(setupObserver, 100)
 }
 
 // 初始化
 onMounted(async () => {
-  store.hotGames = []
   await auth.checkAuth()
   if (auth.user) await store.loadMyRatings()
   await store.loadHot(1, pageSize)
-  setupObserver()
-})
-
-onBeforeUnmount(() => {
-  if (observer) observer.disconnect()
 })
 </script>
 
@@ -232,20 +229,40 @@ onBeforeUnmount(() => {
 .btn-history:hover { color: var(--neon-cyan); border-color: rgba(0,229,255,0.25); }
 .btn-icon { font-size: 16px; }
 
-/* 滚动加载 */
-.scroll-sentinel {
-  display: flex; justify-content: center; align-items: center;
-  padding: 32px 0; min-height: 60px;
+/* 分页器 */
+.pager {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 32px 0 16px;
 }
+.page-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  background: var(--surface-raised);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.page-btn:hover:not(:disabled) { color: var(--neon-cyan); border-color: rgba(0,229,255,0.2); }
+.page-btn.active {
+  background: rgba(0,229,255,0.1);
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  font-weight: 600;
+}
+.page-btn:disabled { opacity: 0.3; cursor: default; }
+.page-ellipsis { padding: 0 4px; color: var(--text-muted); font-size: 13px; }
+.page-info { margin-left: 12px; font-size: 12px; color: var(--text-muted); }
 .loading-spinner {
-  width: 24px; height: 24px;
+  display: inline-block; width: 24px; height: 24px;
   border: 2px solid transparent;
   border-top-color: var(--neon-cyan);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+  vertical-align: middle; margin-right: 8px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.end-text { font-size: 13px; color: var(--text-muted); }
 
 /* 侧边栏 */
 .sidebar-overlay {

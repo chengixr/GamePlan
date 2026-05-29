@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from datetime import date, datetime, timedelta
 import json
 import threading
-from database import SessionLocal, Game, DailyTopSeller, RecommendationHistory, Tag
+from database import SessionLocal, Game, DailyTopSeller, Tag
 from models import GameResponse, PaginatedResponse
 from auth import get_current_user, get_db
 from recommender import get_recommendations
@@ -82,11 +82,6 @@ def recommended(
     current_user=Depends(get_current_user),
 ):
     total, game_ids = get_recommendations(db, current_user.id)
-    # 仅在首页时批量写入推荐历史，避免污染后续分页的排序
-    if page == 1:
-        for gid in game_ids:
-            db.add(RecommendationHistory(user_id=current_user.id, game_id=gid))
-        db.commit()
     start = (page - 1) * page_size
     paged_ids = game_ids[start : start + page_size]
     items = []

@@ -3,7 +3,7 @@ import json
 import random
 import threading
 from sqlalchemy.orm import Session, joinedload
-from database import Rating, Game, DailyTopSeller, RecommendationHistory
+from database import Rating, Game, DailyTopSeller
 
 # game-tag 映射缓存（5 分钟 TTL）
 _tag_cache = {}
@@ -193,16 +193,7 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
         penalty = dislike_penalties.get(gid, 0) * DISLIKE_PENALTY_WEIGHT
         final_scores[gid] = max(0, score - penalty)
 
-    # === 去重与降权 ===
-    history = db.query(RecommendationHistory).filter(
-        RecommendationHistory.user_id == user_id
-    ).all()
-    history_game_ids = {h.game_id for h in history}
-
-    for gid in list(final_scores.keys()):
-        if gid in history_game_ids:
-            final_scores[gid] *= 0.5
-
+    # === 去除已打分 ===
     sorted_games = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
     game_ids = [gid for gid, _ in sorted_games if gid not in rated_game_ids]
 

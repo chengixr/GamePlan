@@ -71,19 +71,19 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
             _rec_cache[cache_key] = {"total": result[0], "ids": result[1], "expires": datetime.now() + timedelta(minutes=5)}
         return result
 
-    # 评分数据缓存读取
+    # 评分数据缓存读取（存储原始元组避免 DetachedInstanceError）
     now = datetime.now()
     with _ratings_cache_lock:
         if _ratings_cache.get("expires", now) > now:
-            all_ratings = _ratings_cache["data"]
+            rating_rows = _ratings_cache["data"]
         else:
-            all_ratings = db.query(Rating).all()
-            _ratings_cache["data"] = all_ratings
+            rating_rows = [(r.user_id, r.game_id, r.score) for r in db.query(Rating).all()]
+            _ratings_cache["data"] = rating_rows
             _ratings_cache["expires"] = now + timedelta(minutes=2)
 
     user_scores = {}
-    for r in all_ratings:
-        user_scores.setdefault(r.user_id, {})[r.game_id] = r.score
+    for uid, gid, score in rating_rows:
+        user_scores.setdefault(uid, {})[gid] = score
 
     current_scores = user_scores.get(user_id, {})
     rated_game_ids = set(current_scores.keys())

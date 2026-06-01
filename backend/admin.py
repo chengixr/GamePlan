@@ -8,7 +8,7 @@ from sqlalchemy import func
 from database import SessionLocal, User, Rating, Game, DailyTopSeller, UserSession
 from models import AdminUserResponse, AdminSyncStatusResponse, AdminLogResponse, AdminSchedulerJobResponse
 from auth import require_admin, get_db
-from steam_sync import sync_steam_data, _scheduler, get_job_status
+import steam_sync
 
 logger = logging.getLogger("admin")
 router = APIRouter()
@@ -112,8 +112,8 @@ def user_ratings(
 
 @router.get("/sync/status")
 def sync_status(admin: User = Depends(require_admin)):
-    running = _scheduler.running if _scheduler else False
-    jobs = _scheduler.get_jobs() if _scheduler else []
+    running = steam_sync._scheduler.running if steam_sync._scheduler else False
+    jobs = steam_sync._scheduler.get_jobs() if steam_sync._scheduler else []
     next_sync = ""
     for j in jobs:
         if j.name == "sync_steam_data" and j.next_run_time:
@@ -128,7 +128,7 @@ def sync_status(admin: User = Depends(require_admin)):
 @router.post("/sync/trigger")
 def trigger_sync(admin: User = Depends(require_admin)):
     from threading import Thread
-    t = Thread(target=sync_steam_data, daemon=True)
+    t = Thread(target=steam_sync.sync_steam_data, daemon=True)
     t.start()
     return {"status": "started", "message": "同步已在后台启动"}
 
@@ -143,8 +143,8 @@ _JOB_META = {
 
 @router.get("/scheduler/jobs")
 def list_scheduler_jobs(admin: User = Depends(require_admin)):
-    job_status = get_job_status()
-    jobs = _scheduler.get_jobs() if _scheduler else []
+    job_status = steam_sync.get_job_status()
+    jobs = steam_sync._scheduler.get_jobs() if steam_sync._scheduler else []
     items = []
     for j in jobs:
         meta = _JOB_META.get(j.id, {"name": j.id, "description": "", "cron": ""})
@@ -163,11 +163,11 @@ def list_scheduler_jobs(admin: User = Depends(require_admin)):
 
 @router.post("/scheduler/jobs/{job_id}/trigger")
 def trigger_scheduler_job(job_id: str, admin: User = Depends(require_admin)):
-    if not _scheduler:
+    if not steam_sync._scheduler:
         raise HTTPException(503, "调度器未启动")
 
     job = None
-    for j in _scheduler.get_jobs():
+    for j in steam_sync._scheduler.get_jobs():
         if j.id == job_id:
             job = j
             break

@@ -9,6 +9,7 @@
     <AdminUsers v-if="activeTab === 'users'" />
     <AdminSync v-if="activeTab === 'sync'" />
     <AdminLogs v-if="activeTab === 'logs'" />
+    <AdminScheduler v-if="activeTab === 'scheduler'" />
   </div>
 </template>
 
@@ -17,12 +18,14 @@ import { ref } from 'vue'
 import AdminUsers from '../components/AdminUsers.vue'
 import AdminSync from '../components/AdminSync.vue'
 import AdminLogs from '../components/AdminLogs.vue'
+import AdminScheduler from '../components/AdminScheduler.vue'
 
 const activeTab = ref('users')
 const tabs = [
   { key: 'users', label: '用户管理' },
   { key: 'sync', label: '同步监控' },
   { key: 'logs', label: '日志查看' },
+  { key: 'scheduler', label: '定时任务' },
 ]
 </script>
 

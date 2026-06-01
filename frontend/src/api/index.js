@@ -71,4 +71,6 @@ export const api = {
   adminSyncGame: (gameId) => request(`/admin/sync/game/${gameId}`),
   adminLogs: (date = '', level = 'ALL', lines = 100) =>
     request(`/admin/logs?target_date=${date}&level=${level}&lines=${lines}`),
+  adminSchedulerJobs: () => request('/admin/scheduler/jobs'),
+  adminSchedulerTrigger: (jobId) => request(`/admin/scheduler/jobs/${jobId}/trigger`, { method: 'POST' }),
 }

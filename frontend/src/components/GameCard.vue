@@ -22,6 +22,7 @@
       <!-- 图片加载成功后覆盖占位符；无图片则只显示占位符 -->
       <img
         v-if="!imgFailed"
+        :key="imgRetry"
         :src="imgSrc"
         :alt="game.name"
         class="card-image"
@@ -72,10 +73,10 @@ function tryNext() {
   clearTimeout(imgTimer)
   if (imgRetry.value === 0 && props.game.fallback_image) {
     imgRetry.value = 1
-    // 回退图片给 5 秒加载时间作为兜底
+    // 回退图片给 2 秒加载时间作为兜底
     imgTimer = setTimeout(() => {
       if (!imgLoaded.value) imgFailed.value = true
-    }, 5000)
+    }, 2000)
     return
   }
   imgFailed.value = true
@@ -91,10 +92,10 @@ function onImgError() {
 }
 
 onMounted(() => {
-  // 兜底：主图 5 秒未触发 load 也未 error 时，尝试回退
+  // 兜底：主图 2 秒未触发 load 也未 error 时，尝试回退
   imgTimer = setTimeout(() => {
     if (!imgLoaded.value) tryNext()
-  }, 5000)
+  }, 2000)
 })
 onBeforeUnmount(() => clearTimeout(imgTimer))
 

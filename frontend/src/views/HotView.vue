@@ -15,36 +15,25 @@
     </header>
 
     <!-- 游戏列表 -->
-    <GameCard
-      v-for="(game, idx) in displayGames"
-      :key="game.id"
-      :game="game"
-      :rank="(currentPageNum - 1) * pageSize + idx + 1"
-      :show-rating="!!auth.user"
-    />
+    <div class="games-container" :class="{ 'is-loading': isFirstLoad }">
+      <div v-if="isFirstLoad" class="loading-overlay">
+        <span class="loading-spinner"></span>
+        <span class="loading-text">加载中...</span>
+      </div>
+      <GameCard
+        v-for="(game, idx) in displayGames"
+        :key="game.id"
+        :game="game"
+        :rank="idx + 1"
+        :show-rating="!!auth.user"
+      />
+    </div>
 
-    <!-- 分页器 -->
-    <div class="pager" v-if="total > 0">
-      <select v-model="pageSize" class="page-size-select" @change="onPageSizeChange">
-        <option :value="20">20条/页</option>
-        <option :value="50">50条/页</option>
-        <option :value="100">100条/页</option>
-      </select>
-      <template v-if="totalPages > 1">
-        <button class="page-btn" :disabled="currentPageNum <= 1" @click="goPage(1)">首页</button>
-        <button class="page-btn" :disabled="currentPageNum <= 1" @click="goPage(currentPageNum - 1)">上一页</button>
-        <template v-for="p in visiblePages" :key="p">
-          <span v-if="p === '...'" class="page-ellipsis">...</span>
-          <button v-else class="page-btn" :class="{ active: p === currentPageNum }" @click="goPage(p)">{{ p }}</button>
-        </template>
-        <button class="page-btn" :disabled="currentPageNum >= totalPages" @click="goPage(currentPageNum + 1)">下一页</button>
-        <button class="page-btn" :disabled="currentPageNum >= totalPages" @click="goPage(totalPages)">末页</button>
-      </template>
-      <span class="page-jump" v-if="totalPages > 3">
-        跳至<input v-model="jumpPage" class="jump-input" @keyup.enter="doJump" />页
-        <button class="page-btn" @click="doJump">GO</button>
-      </span>
-      <span class="page-info">共 {{ total }} 款</span>
+    <!-- 滚动加载 -->
+    <div ref="sentinel" class="scroll-sentinel">
+      <span v-if="loadingMore" class="loading-spinner small"></span>
+      <span v-else-if="hasMore" class="hint-text">继续滚动加载更多</span>
+      <span v-else-if="displayGames.length > 0" class="end-text">— 共 {{ displayGames.length }} 款，已全部加载 —</span>
     </div>
 
     <!-- 历史记录侧边栏 -->
@@ -95,17 +84,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import GameCard from '../components/GameCard.vue'
 import { useGamesStore } from '../stores/games'
 import { useAuthStore } from '../stores/auth'
 
+const PAGE_SIZE = 20
 const store = useGamesStore()
 const auth = useAuthStore()
 
-const pageSize = ref(20)
-const jumpPage = ref('')
-const loading = ref(false)
+const isFirstLoad = ref(true)
+const loadingMore = ref(false)
 const sidebarOpen = ref(false)
 const isHistoryMode = ref(false)
 const historyDate = ref('')
@@ -147,52 +136,32 @@ const displayGames = computed(() =>
 const total = computed(() =>
   isHistoryMode.value ? store.historyTotal : store.hotTotal
 )
-const currentPageNum = computed(() =>
-  isHistoryMode.value ? store.historyPage : store.hotPage
-)
-const totalPages = computed(() => Math.ceil(total.value / pageSize.value))
+const hasMore = computed(() => displayGames.value.length < total.value)
 
-// 页码显示：当前页前后各 2 页
-const visiblePages = computed(() => {
-  const pages = []
-  const tp = totalPages.value
-  const cp = currentPageNum.value
-  if (tp <= 7) {
-    for (let i = 1; i <= tp; i++) pages.push(i)
-  } else {
-    pages.push(1)
-    if (cp > 3) pages.push('...')
-    for (let i = Math.max(2, cp - 1); i <= Math.min(tp - 1, cp + 1); i++) pages.push(i)
-    if (cp < tp - 2) pages.push('...')
-    pages.push(tp)
-  }
-  return pages
-})
+// 无限滚动
+const sentinel = ref(null)
+let observer = null
 
-function goPage(p) {
-  if (p < 1 || p > totalPages.value || p === currentPageNum.value) return
-  loadPage(p)
+function setupObserver() {
+  if (observer) observer.disconnect()
+  observer = new IntersectionObserver(([entry]) => {
+    if (entry.isIntersecting && hasMore.value && !loadingMore.value) {
+      loadMore()
+    }
+  }, { rootMargin: '400px' })
+  if (sentinel.value) observer.observe(sentinel.value)
 }
 
-function doJump() {
-  const p = parseInt(jumpPage.value)
-  if (isNaN(p) || p < 1 || p > totalPages.value) { jumpPage.value = ''; return }
-  loadPage(p)
-  jumpPage.value = ''
-}
-
-function onPageSizeChange() {
-  loadPage(1)
-}
-
-function loadPage(p) {
-  loading.value = true
-  if (isHistoryMode.value) {
-    store.loadHistory(historyDate.value, p, pageSize.value).finally(() => loading.value = false)
-  } else {
-    store.loadHot(p, pageSize.value).finally(() => loading.value = false)
-  }
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+async function loadMore() {
+  loadingMore.value = true
+  const nextPage = Math.floor(store.hotGames.length / PAGE_SIZE) + 1
+  if (nextPage <= store.hotPage) { loadingMore.value = false; return }
+  observer?.disconnect()
+  await store.loadHot(nextPage, PAGE_SIZE, true)
+  loadingMore.value = false
+  setTimeout(() => {
+    if (sentinel.value && observer && hasMore.value) observer.observe(sentinel.value)
+  }, 300)
 }
 
 // 侧边栏
@@ -207,21 +176,72 @@ async function loadHistoryDate(d) {
   historyDate.value = d
   isHistoryMode.value = true
   sidebarOpen.value = false
-  loading.value = true
-  await store.loadHistory(d, 1, pageSize.value)
-  loading.value = false
+  isFirstLoad.value = true
+  store.historyGames = []
+  store.historyTotal = 0
+  store.historyPage = 0
+  await store.loadHistory(d, 1, PAGE_SIZE, true)
+  isFirstLoad.value = false
+  setupObserver()
 }
 
 // 初始化
 onMounted(async () => {
+  isFirstLoad.value = true
+
+  // 缓存未过期则直接复用，避免返回列表时等待 API
+  const CACHE_TTL = 5 * 60 * 1000
+  const cacheValid = store.hotCacheTime && (Date.now() - store.hotCacheTime) < CACHE_TTL && store.hotGames.length > 0
+
+  if (!cacheValid) {
+    store.hotGames = []
+    store.hotTotal = 0
+    store.hotPage = 0
+  }
+
   await auth.checkAuth()
   if (auth.user) await store.loadMyRatings()
-  await store.loadHot(1, pageSize.value)
+
+  if (!cacheValid) {
+    await store.loadHot(1, PAGE_SIZE, true)
+  }
+  isFirstLoad.value = false
+  setupObserver()
+})
+
+onBeforeUnmount(() => {
+  if (observer) observer.disconnect()
 })
 </script>
 
 <style scoped>
 .page-header { margin-bottom: 28px; }
+
+/* 首次加载 */
+.games-container { position: relative; min-height: 200px; }
+.games-container.is-loading .game-card { opacity: 0.4; pointer-events: none; }
+.loading-overlay {
+  position: absolute; inset: 0; z-index: 10;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px;
+  background: rgba(6, 6, 11, 0.6);
+  backdrop-filter: blur(4px);
+  border-radius: 10px;
+}
+.loading-text {
+  font-size: 14px; color: var(--text-muted);
+  letter-spacing: 1px;
+}
+.loading-spinner {
+  width: 32px; height: 32px;
+  border: 3px solid rgba(0,229,255,0.15);
+  border-top-color: var(--neon-cyan);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.loading-spinner.small { width: 22px; height: 22px; border-width: 2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 .header-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .page-title {
   display: flex; align-items: center; gap: 12px;
@@ -256,63 +276,13 @@ onMounted(async () => {
 .btn-history:hover { color: var(--neon-cyan); border-color: rgba(0,229,255,0.25); }
 .btn-icon { font-size: 16px; }
 
-/* 分页器 */
-.pager {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 32px 0 16px;
+/* 滚动加载 */
+.scroll-sentinel {
+  display: flex; justify-content: center; align-items: center;
+  padding: 32px 0; min-height: 60px;
 }
-.page-btn {
-  padding: 6px 14px;
-  font-size: 13px;
-  background: var(--surface-raised);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.page-btn:hover:not(:disabled) { color: var(--neon-cyan); border-color: rgba(0,229,255,0.2); }
-.page-btn.active {
-  background: rgba(0,229,255,0.1);
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
-  font-weight: 600;
-}
-.page-btn:disabled { opacity: 0.3; cursor: default; }
-.page-ellipsis { padding: 0 4px; color: var(--text-muted); font-size: 13px; }
-.page-size-select {
-  padding: 5px 8px;
-  background: var(--surface-raised);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 12px;
-  cursor: pointer;
-  outline: none;
-  margin-right: 8px;
-}
-.page-jump { margin-left: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
-.jump-input {
-  width: 44px; padding: 4px 6px;
-  background: var(--surface);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 3px;
-  color: var(--text-primary);
-  font-size: 12px;
-  text-align: center;
-  outline: none;
-}
-.jump-input:focus { border-color: var(--neon-cyan); }
-.page-info { margin-left: 12px; font-size: 12px; color: var(--text-muted); }
-.loading-spinner {
-  display: inline-block; width: 24px; height: 24px;
-  border: 2px solid transparent;
-  border-top-color: var(--neon-cyan);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  vertical-align: middle; margin-right: 8px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
+.hint-text { font-size: 13px; color: var(--text-muted); opacity: 0.6; }
+.end-text { font-size: 13px; color: var(--text-muted); }
 
 /* 侧边栏 */
 .sidebar-overlay {

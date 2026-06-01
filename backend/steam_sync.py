@@ -414,6 +414,10 @@ def _try_fetch_details(appid: int) -> dict | None:
 # ==================== 定时调度 ====================
 
 _scheduler = None
+_job_status: dict[str, dict] = {}
+
+def get_job_status() -> dict:
+    return dict(_job_status)
 
 def _fetch_user_reviews(appid: int) -> str:
     """获取 Steam 用户评价（12条中文）"""
@@ -519,17 +523,43 @@ def catchup_sync():
 
 def start_scheduler():
     global _scheduler
+    from datetime import datetime, timezone
+    from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+
     _scheduler = BackgroundScheduler()
+
+    def _on_job_executed(event):
+        _job_status[event.job_id] = {
+            "last_run": datetime.now(timezone.utc).isoformat(),
+            "last_status": "success",
+            "last_error": None,
+        }
+
+    def _on_job_error(event):
+        _job_status[event.job_id] = {
+            "last_run": datetime.now(timezone.utc).isoformat(),
+            "last_status": "failed",
+            "last_error": str(event.exception)[:500] if event.exception else "未知错误",
+        }
+
+    _scheduler.add_listener(_on_job_executed, EVENT_JOB_EXECUTED)
+    _scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
+
     # 每小时同步 Steam 排名快照（仅排名和名称）
     from ranking_sync import sync_rankings
-    _scheduler.add_job(sync_rankings, "cron", minute=13)
+    _scheduler.add_job(sync_rankings, "cron", minute=13, id="sync_rankings")
     # 每 6 小时同步完整游戏详情
-    _scheduler.add_job(sync_steam_data, "cron", hour="0,6,12,18", minute=17)
+    _scheduler.add_job(sync_steam_data, "cron", hour="0,6,12,18", minute=17, id="sync_steam_data")
     # 每天 19:17 追补同步
-    _scheduler.add_job(catchup_sync, "cron", hour=19, minute=17)
+    _scheduler.add_job(catchup_sync, "cron", hour=19, minute=17, id="catchup_sync")
     # 每天凌晨 3 点清理过期日志
     from logger_config import clean_old_logs
-    _scheduler.add_job(clean_old_logs, "cron", hour=3, minute=0)
+    _scheduler.add_job(clean_old_logs, "cron", hour=3, minute=0, id="clean_old_logs")
+
+    for job in _scheduler.get_jobs():
+        if job.id not in _job_status:
+            _job_status[job.id] = {"last_run": None, "last_status": "pending", "last_error": None}
+
     _scheduler.start()
     from threading import Timer
     Timer(10, sync_rankings).start()

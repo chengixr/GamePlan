@@ -8,7 +8,7 @@ from sqlalchemy import func
 from database import SessionLocal, User, Rating, Game, DailyTopSeller, UserSession
 from models import AdminUserResponse, AdminSyncStatusResponse, AdminLogResponse
 from auth import require_admin, get_db
-from steam_sync import sync_steam_data, _scheduler
+from steam_sync import sync_steam_data, _scheduler, get_job_status
 
 logger = logging.getLogger("admin")
 router = APIRouter()

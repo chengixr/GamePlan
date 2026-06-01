@@ -2,8 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from datetime import date, datetime, timedelta
 import json
+import re
 import threading
-from database import SessionLocal, Game, DailyTopSeller, Tag
+from database import SessionLocal, Game, DailyTopSeller, SteamRanking, Tag
+from sqlalchemy import func
 from models import GameResponse, PaginatedResponse
 from auth import get_current_user, get_db
 from recommender import get_recommendations
@@ -30,46 +32,64 @@ def top_sellers(
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    today = date.today()
-    cache_key = f"ts_{today.isoformat()}"
+    cache_key = "ts_latest"
 
-    # 从缓存获取全量榜单
     with _cache_lock:
         cache_entry = _cache.get(cache_key)
         if cache_entry and cache_entry["expires"] > datetime.now():
             all_items, total = cache_entry["data"]
         else:
-            sellers = (
-                db.query(DailyTopSeller)
-                .filter(DailyTopSeller.date == today)
-                .order_by(DailyTopSeller.rank)
-                .all()
-            )
-            total = len(sellers)
-            if not sellers:
+            # 获取最新一次快照时间
+            latest = db.query(func.max(SteamRanking.snapshot_time)).scalar()
+            if not latest:
                 _cache[cache_key] = {"data": ([], 0), "expires": datetime.now() + timedelta(minutes=5)}
                 return PaginatedResponse(items=[], total=0, page=page, page_size=page_size)
 
-            # 批量查询：一次 IN 查询替代 N 次单条查询
-            game_ids = [s.game_id for s in sellers]
+            rankings = (
+                db.query(SteamRanking)
+                .filter(SteamRanking.snapshot_time == latest)
+                .order_by(SteamRanking.rank)
+                .all()
+            )
+            if not rankings:
+                _cache[cache_key] = {"data": ([], 0), "expires": datetime.now() + timedelta(minutes=5)}
+                return PaginatedResponse(items=[], total=0, page=page, page_size=page_size)
+
+            # 批量查找 Game 表（IN 查询）
+            appids = [r.steam_app_id for r in rankings]
             games_map = {
-                g.id: g
-                for g in db.query(Game).options(joinedload(Game.tags)).filter(Game.id.in_(game_ids)).all()
+                g.steam_app_id: g
+                for g in db.query(Game).options(joinedload(Game.tags))
+                .filter(Game.steam_app_id.in_(appids)).all()
             }
+
+            total = len(rankings)
             all_items = []
-            for seller in sellers:
-                game = games_map.get(seller.game_id)
+            for r in rankings:
+                game = games_map.get(r.steam_app_id)
                 if game:
+                    # 图片回退：仅使用本地存在的截图
+                    fallback = ""
+                    try:
+                        ss = json.loads(game.screenshots or "[]")
+                        for s in ss:
+                            if s.startswith("/static/"):
+                                fallback = s
+                                break
+                    except Exception:
+                        pass
+
                     all_items.append(GameResponse(
                         id=game.id, steam_app_id=game.steam_app_id,
                         name=game.name, name_cn=game.name_cn or "",
                         description=game.description or "",
-                        image_url=game.image_url or "", price=game.price or "",
+                        image_url=game.image_url or "",
+                        fallback_image=fallback,
+                        price=game.price or "",
                         tags=[t.name for t in game.tags],
                     ))
             _cache[cache_key] = {"data": (all_items, total), "expires": datetime.now() + timedelta(minutes=5)}
 
-    # 从内存中分页
     start = (page - 1) * page_size
     paged = all_items[start:start + page_size] if all_items else []
     return PaginatedResponse(items=paged, total=total, page=page, page_size=page_size)
@@ -88,6 +108,16 @@ def recommended(
     for gid in paged_ids:
         game = db.query(Game).options(joinedload(Game.tags)).filter(Game.id == gid).first()
         if game:
+            fallback = ""
+            try:
+                ss = json.loads(game.screenshots or "[]")
+                for s in ss:
+                    if s.startswith("/static/"):
+                        fallback = s
+                        break
+            except Exception:
+                pass
+
             items.append(GameResponse(
                 id=game.id,
                 steam_app_id=game.steam_app_id,
@@ -95,6 +125,7 @@ def recommended(
                 name_cn=game.name_cn or "",
                 description=game.description or "",
                 image_url=game.image_url or "",
+                fallback_image=fallback,
                 price=game.price or "",
                 tags=[t.name for t in game.tags],
             ))

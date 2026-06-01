@@ -84,7 +84,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import GameCard from '../components/GameCard.vue'
 import { useGamesStore } from '../stores/games'
 import { useAuthStore } from '../stores/auth'
@@ -199,18 +199,18 @@ onMounted(async () => {
     store.hotPage = 0
   }
 
-  setupObserver()
-
   if (!auth.user) await auth.checkAuth()
   if (auth.user) await store.loadMyRatings()
 
   if (!hasCache) {
     await store.loadHot(1, PAGE_SIZE, true)
   } else {
-    // 有缓存：无声刷新，用非 append 替换首页数据
     await store.loadHot(1, PAGE_SIZE, false)
   }
   isFirstLoad.value = false
+  // 等 DOM 更新后再设置 observer，确保 sentinel 位置正确
+  await nextTick()
+  setupObserver()
 })
 
 onBeforeUnmount(() => {

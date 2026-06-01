@@ -104,7 +104,7 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StarRating from '../components/StarRating.vue'
 import RankHistory from '../components/RankHistory.vue'
@@ -159,6 +159,10 @@ onMounted(async () => {
   if (auth.user) await store.loadMyRatings()
   await store.loadGameDetail(id)
   rating.value = store.myRatings[parseInt(id)] || 0
+})
+
+onBeforeUnmount(() => {
+  store.currentGame = null
 })
 </script>
 

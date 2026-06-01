@@ -3,11 +3,7 @@
     <div class="scanlines"></div>
     <NavBar />
     <main class="main-content">
-      <router-view v-slot="{ Component }">
-        <transition name="page-fade">
-          <component :is="Component" />
-        </transition>
-      </router-view>
+      <router-view />
     </main>
   </div>
 </template>
@@ -99,16 +95,4 @@ a:hover { color: var(--neon-magenta); }
   scrollbar-color: var(--surface-raised) var(--void);
 }
 
-.page-fade-enter-active,
-.page-fade-leave-active {
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-.page-fade-enter-from {
-  opacity: 0;
-  transform: translateY(12px);
-}
-.page-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
 </style>

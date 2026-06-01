@@ -153,15 +153,19 @@ function setupObserver() {
 }
 
 async function loadMore() {
+  if (loadingMore.value) return
   loadingMore.value = true
   const nextPage = Math.floor(store.hotGames.length / PAGE_SIZE) + 1
-  if (nextPage <= store.hotPage) { loadingMore.value = false; return }
+  if (nextPage <= store.hotPage || !hasMore.value) {
+    loadingMore.value = false
+    return
+  }
   observer?.disconnect()
   await store.loadHot(nextPage, PAGE_SIZE, true)
   loadingMore.value = false
-  setTimeout(() => {
-    if (sentinel.value && observer && hasMore.value) observer.observe(sentinel.value)
-  }, 300)
+  if (sentinel.value && observer && hasMore.value) {
+    observer.observe(sentinel.value)
+  }
 }
 
 // 侧边栏

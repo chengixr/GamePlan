@@ -32,7 +32,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import GameCard from '../components/GameCard.vue'
 import { useAuthStore } from '../stores/auth'
 import { useGamesStore } from '../stores/games'
@@ -58,24 +58,36 @@ function setupObserver() {
 }
 
 async function loadMore() {
+  if (loading.value) return
   loading.value = true
+  observer?.disconnect()
   const nextPage = store.recPage + 1
   await store.loadRecommended(nextPage, pageSize, true)
   loading.value = false
-  setTimeout(() => {
-    if (sentinel.value && observer) observer.observe(sentinel.value)
-  }, 100)
+  if (sentinel.value && observer && hasMore.value) {
+    observer.observe(sentinel.value)
+  }
 }
 
 onMounted(async () => {
-  store.recGames = []
   await auth.checkAuth()
-  if (auth.user) {
-    loading.value = true
-    await Promise.all([store.loadMyRatings(), store.loadRecommended(1, pageSize)])
-    loading.value = false
-    setupObserver()
+  if (!auth.user) return
+
+  const hasCache = store.recGames.length > 0
+  loading.value = !hasCache
+
+  if (!hasCache) {
+    store.recGames = []
+    store.recTotal = 0
   }
+
+  await Promise.all([
+    store.loadMyRatings(),
+    store.loadRecommended(1, pageSize, false),
+  ])
+  loading.value = false
+  await nextTick()
+  setupObserver()
 })
 
 onBeforeUnmount(() => {

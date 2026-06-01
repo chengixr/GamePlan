@@ -73,10 +73,6 @@ function tryNext() {
   clearTimeout(imgTimer)
   if (imgRetry.value === 0 && props.game.fallback_image) {
     imgRetry.value = 1
-    // 回退图片给 2 秒加载时间作为兜底
-    imgTimer = setTimeout(() => {
-      if (!imgLoaded.value) imgFailed.value = true
-    }, 2000)
     return
   }
   imgFailed.value = true
@@ -92,10 +88,7 @@ function onImgError() {
 }
 
 onMounted(() => {
-  // 兜底：主图 2 秒未触发 load 也未 error 时，尝试回退
-  imgTimer = setTimeout(() => {
-    if (!imgLoaded.value) tryNext()
-  }, 2000)
+  // 无 onMounted 定时器：主图仅依赖 @error 触发回退，不打断正常加载
 })
 onBeforeUnmount(() => clearTimeout(imgTimer))
 

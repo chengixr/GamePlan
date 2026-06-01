@@ -190,20 +190,22 @@ onMounted(async () => {
   const CACHE_TTL = 5 * 60 * 1000
   const cacheValid = store.hotCacheTime && (Date.now() - store.hotCacheTime) < CACHE_TTL && store.hotGames.length > 0
 
-  if (!cacheValid) {
-    isFirstLoad.value = true
-    store.hotGames = []
-    store.hotTotal = 0
-    store.hotPage = 0
+  if (cacheValid) {
+    isFirstLoad.value = false
+    setupObserver()
+    return
   }
+
+  isFirstLoad.value = true
+  store.hotGames = []
+  store.hotTotal = 0
+  store.hotPage = 0
 
   if (!auth.user) await auth.checkAuth()
   if (auth.user) await store.loadMyRatings()
 
-  if (!cacheValid) {
-    await store.loadHot(1, PAGE_SIZE, true)
-    isFirstLoad.value = false
-  }
+  await store.loadHot(1, PAGE_SIZE, true)
+  isFirstLoad.value = false
   setupObserver()
 })
 

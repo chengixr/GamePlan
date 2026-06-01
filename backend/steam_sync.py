@@ -1,11 +1,11 @@
-import urllib.request
 import urllib.request as ur
 import json
 import re
 import time
 import os
 import logging
-from datetime import date, datetime, timezone, timedelta
+import subprocess
+from datetime import date, datetime, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from database import SessionLocal, game_tag_assoc, Game, Tag, DailyTopSeller
 from tag_translations import translate_tag
@@ -54,20 +54,30 @@ def _local_image_url(appid: int) -> str:
 def _local_image_path(appid: int) -> str:
     return os.path.join(IMAGES_DIR, f"{appid}.jpg")
 
-def _download_image(appid: int) -> bool:
+def _curl_download(url: str, output_path: str, timeout: int = 12) -> bool:
+    """使用 curl 下载文件，支持代理"""
+    proxy = _get_proxy()
+    cmd = [
+        "curl", "-s", "-L", "-o", output_path,
+        "--max-time", str(timeout),
+        "-H", f"User-Agent: {HEADERS['User-Agent']}",
+    ]
+    if proxy:
+        cmd.extend(["--proxy", proxy])
+    cmd.append(url)
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=timeout + 5)
+        return result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
+def _download_image(appid: int, url: str = None) -> bool:
     local_path = _local_image_path(appid)
     if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
         return True
-    cdn_url = f"{STEAM_IMG_CDN}/{appid}/header.jpg"
-    try:
-        opener = _make_opener()
-        req = ur.Request(cdn_url, headers=HEADERS)
-        resp = (opener.open(req, timeout=12) if opener else ur.urlopen(req, timeout=12))
-        with open(local_path, "wb") as f:
-            f.write(resp.read())
-        return True
-    except Exception:
-        return False
+    download_url = url or f"{STEAM_IMG_CDN}/{appid}/header.jpg"
+    return _curl_download(download_url, local_path)
 
 
 def _download_screenshots(appid: int, steam_urls: list[str]) -> list[str]:
@@ -78,45 +88,55 @@ def _download_screenshots(appid: int, steam_urls: list[str]) -> list[str]:
         if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
             local_urls.append(f"/static/images/screenshots/{appid}_{idx}.jpg")
             continue
-        try:
-            opener = _make_opener()
-            req = ur.Request(url, headers=HEADERS)
-            resp = (opener.open(req, timeout=15) if opener else ur.urlopen(req, timeout=15))
-            with open(local_path, "wb") as f:
-                f.write(resp.read())
+        if _curl_download(url, local_path, timeout=15):
             local_urls.append(f"/static/images/screenshots/{appid}_{idx}.jpg")
-        except Exception:
-            local_urls.append(url)  # 下载失败保留原始 URL
+        else:
+            local_urls.append(url)
     return local_urls
 
 
 # ==================== 数据源 1: Steam featuredcategories API ====================
 
-def sync_from_api() -> list[dict]:
-    """从 featuredcategories API 获取游戏（名称、价格、图片）—— 最可靠"""
-    items = []
+def sync_from_api() -> tuple[list[dict], list[dict]]:
+    """从 featuredcategories API 获取游戏，返回 (热销榜, 其他发现)。
+    热销榜用于元数据富化，其他类别用于扩展游戏库。"""
+    top_sellers = []
+    discovery = []
     try:
         data = _fetch_json("featuredcategories", timeout=20)
         seen = set()
-        for cat in ["top_sellers", "new_releases", "specials", "coming_soon"]:
+
+        def _parse_item(item):
+            appid = item.get("id")
+            if not appid or appid in seen:
+                return None
+            seen.add(appid)
+            final_price = item.get("final_price")
+            currency = item.get("currency", "USD")
+            if final_price is not None:
+                price = f"¥{final_price / 100:.2f}" if currency == "CNY" else f"{currency} {final_price / 100:.2f}"
+            else:
+                price = "免费"
+            img = item.get("header_image", "")
+            if not img:
+                img = f"{STEAM_IMG_CDN}/{appid}/header.jpg"
+            return {"appid": appid, "name": item.get("name", ""), "header_image": img, "price": price}
+
+        for item in data.get("top_sellers", {}).get("items", []):
+            parsed = _parse_item(item)
+            if parsed:
+                top_sellers.append(parsed)
+
+        for cat in ["new_releases", "specials", "coming_soon"]:
             for item in data.get(cat, {}).get("items", []):
-                appid = item.get("id")
-                if appid and appid not in seen:
-                    seen.add(appid)
-                    final_price = item.get("final_price")
-                    currency = item.get("currency", "USD")
-                    if final_price is not None:
-                        price = f"¥{final_price / 100:.2f}" if currency == "CNY" else f"{currency} {final_price / 100:.2f}"
-                    else:
-                        price = "免费"
-                    img = item.get("header_image", "")
-                    if not img:
-                        img = f"{STEAM_IMG_CDN}/{appid}/header.jpg"
-                    items.append({"appid": appid, "name": item.get("name", ""), "header_image": img, "price": price})
-        logger.info(f"[API] featuredcategories: {len(items)} 款")
+                parsed = _parse_item(item)
+                if parsed:
+                    discovery.append(parsed)
+
+        logger.info(f"[API] 热销 {len(top_sellers)} + 发现 {len(discovery)} 款")
     except Exception as e:
         logger.warning(f"[API] featuredcategories 失败: {e}")
-    return items
+    return top_sellers, discovery
 
 
 # ==================== 数据源 2: Steam 商店搜索页 HTML ====================
@@ -124,18 +144,24 @@ def sync_from_api() -> list[dict]:
 def _scrape_steam_search(filter_type: str, pages: int = 3) -> list[dict]:
     """爬 Steam 搜索页（topsellers / popularwishlist / toprated）"""
     items = []
+    seen = set()
     for page in range(pages):
         try:
-            url = f"https://store.steampowered.com/search/?filter={filter_type}&page={page}"
+            url = f"https://store.steampowered.com/search/?filter={filter_type}&cc=cn&page={page}"
             html = _fetch_html(url, timeout=15)
-            appids = set()
+            new_count = 0
             for m in re.finditer(r'data-ds-appid="(\d+)"', html):
-                appids.add(int(m.group(1)))
-            for appid in appids:
-                items.append({
-                    "appid": appid, "name": "",
-                    "header_image": f"{STEAM_IMG_CDN}/{appid}/header.jpg", "price": "",
-                })
+                appid = int(m.group(1))
+                if appid not in seen:
+                    seen.add(appid)
+                    new_count += 1
+                    items.append({
+                        "appid": appid, "name": "",
+                        "header_image": f"{STEAM_IMG_CDN}/{appid}/header.jpg", "price": "",
+                    })
+            if new_count == 0:
+                logger.info(f"[搜索] {filter_type} page={page} 无新增，终止翻页")
+                break
             time.sleep(0.5)
         except Exception as e:
             logger.warning(f"[搜索] {filter_type} page={page} 失败: {e}")
@@ -172,29 +198,54 @@ def sync_from_steamcharts() -> list[dict]:
 # ==================== 统一同步入口 ====================
 
 def sync_steam_data():
-    """多源同步：API → 搜索页 → SteamCharts，去重合并，分批获取详情"""
+    """多源同步：搜索页排序 → API 元数据富化 → SteamCharts 补充，分批获取详情"""
     db = SessionLocal()
     try:
         logger.info("=== 开始多源同步 ===")
 
-        # 收集所有来源
-        api_items = sync_from_api()
-        search_items = sync_from_search()
-        chart_items = sync_from_steamcharts()
+        # 收集数据
+        api_top, api_discovery = sync_from_api()   # API: 热销元数据 + 发现类游戏
+        search_items = sync_from_search()           # 搜索页: 主排名源（filter=topsellers）
+        chart_items = sync_from_steamcharts()        # SteamCharts: 补充
 
-        # 去重合并（API 数据优先，因为有名称和价格）
+        # 构建 API 元数据查找表（热销 + 发现）
+        api_lookup = {}
+        for item in api_top + api_discovery:
+            if item["appid"] not in api_lookup:
+                api_lookup[item["appid"]] = item
+
+        # 以搜索页排序为基准，API 数据富化名称和价格
         merged = {}
-        for item in api_items:
-            merged[item["appid"]] = item
+        ranked_order = []
+
         for item in search_items:
+            aid = item["appid"]
+            if aid in api_lookup:
+                merged[aid] = api_lookup[aid]  # 用 API 数据（有名称和价格）
+            else:
+                merged[aid] = item
+            ranked_order.append(aid)
+
+        # 追加 API 热销榜中搜索页遗漏的游戏
+        for item in api_top:
             if item["appid"] not in merged:
                 merged[item["appid"]] = item
+                ranked_order.append(item["appid"])
+
+        # 追加 API 发现类游戏（new_releases/specials/coming_soon）
+        for item in api_discovery:
+            if item["appid"] not in merged:
+                merged[item["appid"]] = item
+                ranked_order.append(item["appid"])
+
+        # 追加 SteamCharts
         for item in chart_items:
             if item["appid"] not in merged:
                 merged[item["appid"]] = item
+                ranked_order.append(item["appid"])
 
-        items = sorted(merged.values(), key=lambda x: list(merged.keys()).index(x["appid"]))
-        logger.info(f"合并去重: {len(api_items)} + {len(search_items)} + {len(chart_items)} → {len(items)} 款")
+        items = [merged[aid] for aid in ranked_order]
+        logger.info(f"合并: 搜索 {len(search_items)} + API热销 {len(api_top)} + 发现 {len(api_discovery)} + Charts {len(chart_items)} → {len(items)} 款")
 
         if not items:
             logger.warning("所有数据源均无返回，跳过同步")
@@ -219,13 +270,15 @@ def sync_steam_data():
                 time.sleep(0.5)
                 details = _try_fetch_details(appid); detail_count += 1
 
-                downloaded = _download_image(appid)
+                downloaded = _download_image(appid, item.get("header_image"))
                 if downloaded:
                     img_ok += 1
 
+                # 名称优先用 details，避免搜索抓取的空名
+                en_name = (details.get("name", "") if details else "") or item.get("name", "")
                 game = Game(
                     steam_app_id=appid,
-                    name=item["name"],
+                    name=en_name,
                     name_cn=details.get("name_cn", "") if details else "",
                     description=details.get("description", "") if details else "",
                     image_url=local_img if downloaded else cdn_img,
@@ -254,51 +307,24 @@ def sync_steam_data():
                 if game:
                     if os.path.exists(_local_image_path(appid)):
                         game.image_url = local_img
-                    elif not game.image_url or game.image_url.startswith("/static"):
-                        if _download_image(appid):
+                    elif game.image_url and not game.image_url.startswith("/static"):
+                        pass  # 保留已有 CDN 图片
+                    else:
+                        # 尝试重新下载头图
+                        if _download_image(appid, item.get("header_image")):
                             game.image_url = local_img
-                            img_ok += 1
                         else:
                             game.image_url = cdn_img
-                    # 判断是否需要补充 Steam 详细数据
-                    need_details = (
-                        game.reviews_synced_at is None or
-                        (datetime.now(timezone.utc) - game.reviews_synced_at.replace(tzinfo=timezone.utc)) > timedelta(hours=24) or
-                        not game.name_cn or
-                        len(game.description or '') < 100 or
-                        not game.tags
-                    )
-                    if need_details:
-                        time.sleep(0.5)
-                        d = _try_fetch_details(appid); detail_count += 1
-                        if d:
-                            game.screenshots = d.get("screenshots", "[]")
-                            game.review_summary = d.get("review_summary", "{}")
-                            game.reviews_synced_at = datetime.now(timezone.utc)
-                            # 用户评价
-                            if not game.user_reviews or game.user_reviews == "[]":
-                                game.user_reviews = _fetch_user_reviews(appid)
-                            # 描述：用 Steam 详细描述替换简短描述
-                            if d.get("description") and len(d["description"]) > len(game.description or ''):
-                                game.description = d["description"]
-                            # 中文名
-                            if d.get("name_cn") and not game.name_cn:
-                                game.name_cn = d["name_cn"]
-                            # 标签
-                            if d.get("tags"):
-                                # 清除旧标签关联
-                                db.execute(game_tag_assoc.delete().where(game_tag_assoc.c.game_id == game.id))
-                                seen_tags = set()
-                                for tag_name in d["tags"]:
-                                    if tag_name in seen_tags:
-                                        continue
-                                    seen_tags.add(tag_name)
-                                    tag = db.query(Tag).filter(Tag.name == tag_name).first()
-                                    if not tag:
-                                        tag = Tag(name=tag_name)
-                                        db.add(tag); db.flush()
-                                    db.execute(game_tag_assoc.insert().values(game_id=game.id, tag_id=tag.id))
                     game.updated_at = datetime.now(timezone.utc)
+
+                    # 修复空截图：仅在截图缺失时拉取详情
+                    if not game.screenshots or game.screenshots == "[]":
+                        try:
+                            d = _try_fetch_details(game.steam_app_id)
+                            if d and d.get("screenshots") and d["screenshots"] != "[]":
+                                game.screenshots = d["screenshots"]
+                        except Exception:
+                            pass
                 gid = game.id if game else None
                 updated += 1
 
@@ -373,6 +399,7 @@ def _try_fetch_details(appid: int) -> dict | None:
             except: pass
 
         return {
+            "name": gd.get("name", ""),
             "name_cn": name_cn,
             "description": gd.get("detailed_description", "") or gd.get("short_description", ""),
             "release_date": gd.get("release_date", {}).get("date", ""),
@@ -424,17 +451,17 @@ def catchup_sync():
         today_game_ids = {e.game_id for e in today_entries}
 
         # 2. 收集所有数据源的游戏（最后一次尝试）
-        from_games = sync_from_api()
+        from_api_top, from_api_disc = sync_from_api()
         from_search = sync_from_search()
         from_charts = sync_from_steamcharts()
         all_ids = set()
         merge = {}
-        for item in from_games + from_search + from_charts:
+        for item in from_search + from_api_top + from_api_disc + from_charts:
             aid = item["appid"]
             if aid not in all_ids:
                 all_ids.add(aid)
                 merge[aid] = item
-        logger.info(f"追补合并: {len(from_games)} + {len(from_search)} + {len(from_charts)} → {len(merge)} 款")
+        logger.info(f"追补合并: 搜索 {len(from_search)} + API {len(from_api_top)+len(from_api_disc)} + Charts {len(from_charts)} → {len(merge)} 款")
 
         # 3. 补录当天缺失的排名
         catchup_rank = 0
@@ -493,6 +520,10 @@ def catchup_sync():
 def start_scheduler():
     global _scheduler
     _scheduler = BackgroundScheduler()
+    # 每小时同步 Steam 排名快照（仅排名和名称）
+    from ranking_sync import sync_rankings
+    _scheduler.add_job(sync_rankings, "cron", minute=13)
+    # 每 6 小时同步完整游戏详情
     _scheduler.add_job(sync_steam_data, "cron", hour="0,6,12,18", minute=17)
     # 每天 19:17 追补同步
     _scheduler.add_job(catchup_sync, "cron", hour=19, minute=17)
@@ -501,6 +532,7 @@ def start_scheduler():
     _scheduler.add_job(clean_old_logs, "cron", hour=3, minute=0)
     _scheduler.start()
     from threading import Timer
+    Timer(10, sync_rankings).start()
     Timer(30, sync_steam_data).start()
 
 def shutdown_scheduler():

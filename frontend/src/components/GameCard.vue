@@ -19,8 +19,9 @@
           <rect x="52" y="12" width="6" height="6" rx="2" stroke="currentColor" stroke-width="2" />
         </svg>
       </div>
-      <!-- 图片加载成功后覆盖占位符 -->
+      <!-- 图片加载成功后覆盖占位符；无图片则只显示占位符 -->
       <img
+        v-if="!imgFailed"
         :src="imgSrc"
         :alt="game.name"
         class="card-image"
@@ -40,7 +41,7 @@
       <div class="tags">
         <span v-for="tag in game.tags.slice(0, 5)" :key="tag" class="tag">{{ tag }}</span>
       </div>
-      <div class="card-footer" v-if="showRating">
+      <div class="card-footer" v-if="showRating" @click.prevent.stop>
         <StarRating v-model="rating" @update:model-value="onRate" />
         <span class="rating-hint" v-if="!rating">评分</span>
       </div>
@@ -49,36 +50,53 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import StarRating from './StarRating.vue'
 import { useGamesStore } from '../stores/games'
 
 const props = defineProps({ game: Object, rank: Number, showRating: { type: Boolean, default: true } })
 const store = useGamesStore()
 const rating = ref(store.myRatings[props.game.id] || 0)
-const imgLoaded = ref(false)     // 图片加载成功 → 显示
-const imgRetry = ref(0)          // 重试次数
+
+const imgLoaded = ref(false)
+const imgFailed = ref(false)
+const imgRetry = ref(0)
+let imgTimer = null
 
 const imgSrc = computed(() => {
-  const appid = props.game.steam_app_id
-  // 第 0 次：用 image_url；第 1 次：用 CDN fallback
-  if (imgRetry.value === 0) {
-    const url = props.game.image_url || ''
-    if (url) return url
-  }
-  return `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/header.jpg`
+  if (imgRetry.value === 0) return props.game.image_url || ''
+  return props.game.fallback_image || ''
 })
 
+function tryNext() {
+  clearTimeout(imgTimer)
+  if (imgRetry.value === 0 && props.game.fallback_image) {
+    imgRetry.value = 1
+    // 回退图片给 5 秒加载时间作为兜底
+    imgTimer = setTimeout(() => {
+      if (!imgLoaded.value) imgFailed.value = true
+    }, 5000)
+    return
+  }
+  imgFailed.value = true
+}
+
 function onImgLoad() {
+  clearTimeout(imgTimer)
   imgLoaded.value = true
 }
 
 function onImgError() {
-  if (imgRetry.value === 0) {
-    imgRetry.value = 1  // 切到 CDN 重试
-  }
-  // CDN 也失败 → 保持占位符
+  tryNext()
 }
+
+onMounted(() => {
+  // 兜底：主图 5 秒未触发 load 也未 error 时，尝试回退
+  imgTimer = setTimeout(() => {
+    if (!imgLoaded.value) tryNext()
+  }, 5000)
+})
+onBeforeUnmount(() => clearTimeout(imgTimer))
 
 watch(() => store.myRatings[props.game.id], (val) => {
   if (val !== undefined) rating.value = val

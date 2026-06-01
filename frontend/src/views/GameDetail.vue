@@ -1,6 +1,6 @@
 <template>
   <div class="detail" v-if="game">
-    <button class="btn-back" @click="$router.back()">&#8592; 返回</button>
+    <button class="btn-back" @click="goBack">&#8592; 返回</button>
 
     <!-- 模块1: 顶栏 - 游戏名 + 标签 + 价格 + 评价摘要 + 评分 -->
     <div class="hero-module">
@@ -151,6 +151,14 @@ async function onRate(score) {
 
 function toggleRankHistory() {
   showRankHistory.value = !showRankHistory.value
+}
+
+function goBack() {
+  if (window.history.length > 1) {
+    router.back()
+  } else {
+    router.push('/hot')
+  }
 }
 
 onMounted(async () => {

@@ -189,28 +189,28 @@ async function loadHistoryDate(d) {
   setupObserver()
 }
 
-// 初始化（auth 已由 router beforeEach 处理，此处仅补确认）
+// 初始化
 onMounted(async () => {
-  const CACHE_TTL = 5 * 60 * 1000
-  const cacheValid = store.hotCacheTime && (Date.now() - store.hotCacheTime) < CACHE_TTL && store.hotGames.length > 0
+  const hasCache = store.hotGames.length > 0
+  isFirstLoad.value = !hasCache
 
-  if (cacheValid) {
-    isFirstLoad.value = false
-    setupObserver()
-    return
+  if (!hasCache) {
+    store.hotTotal = 0
+    store.hotPage = 0
   }
 
-  isFirstLoad.value = true
-  store.hotGames = []
-  store.hotTotal = 0
-  store.hotPage = 0
+  setupObserver()
 
   if (!auth.user) await auth.checkAuth()
   if (auth.user) await store.loadMyRatings()
 
-  await store.loadHot(1, PAGE_SIZE, true)
+  if (!hasCache) {
+    await store.loadHot(1, PAGE_SIZE, true)
+  } else {
+    // 有缓存：无声刷新，用非 append 替换首页数据
+    await store.loadHot(1, PAGE_SIZE, false)
+  }
   isFirstLoad.value = false
-  setupObserver()
 })
 
 onBeforeUnmount(() => {

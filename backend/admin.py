@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database import SessionLocal, User, Rating, Game, DailyTopSeller, UserSession
-from models import AdminUserResponse, AdminSyncStatusResponse, AdminLogResponse
+from models import AdminUserResponse, AdminSyncStatusResponse, AdminLogResponse, AdminSchedulerJobResponse
 from auth import require_admin, get_db
 from steam_sync import sync_steam_data, _scheduler, get_job_status
 
@@ -131,6 +131,54 @@ def trigger_sync(admin: User = Depends(require_admin)):
     t = Thread(target=sync_steam_data, daemon=True)
     t.start()
     return {"status": "started", "message": "同步已在后台启动"}
+
+# ========== 定时任务 ==========
+
+_JOB_META = {
+    "sync_rankings": {"name": "排名快照同步", "description": "每小时从 Steam 搜索页抓取热销前 100 名排名，缺失游戏自动拉取详情入库", "cron": "每小时第 13 分"},
+    "sync_steam_data": {"name": "完整数据同步", "description": "多源同步（API+搜索+SteamCharts），更新游戏详情、截图、标签、评价", "cron": "每天 00:17, 06:17, 12:17, 18:17 (UTC)"},
+    "catchup_sync": {"name": "追补同步", "description": "补录当天缺失的排名记录，补充数据不完整游戏的截图/描述/标签", "cron": "每天 19:17 (UTC)"},
+    "clean_old_logs": {"name": "日志清理", "description": "清理 30 天前的过期日志文件", "cron": "每天 03:00 (UTC)"},
+}
+
+@router.get("/scheduler/jobs")
+def list_scheduler_jobs(admin: User = Depends(require_admin)):
+    job_status = get_job_status()
+    jobs = _scheduler.get_jobs() if _scheduler else []
+    items = []
+    for j in jobs:
+        meta = _JOB_META.get(j.id, {"name": j.id, "description": "", "cron": ""})
+        status = job_status.get(j.id, {"last_run": None, "last_status": "pending", "last_error": None})
+        items.append(AdminSchedulerJobResponse(
+            id=j.id,
+            name=meta["name"],
+            description=meta["description"],
+            cron=meta["cron"],
+            next_run=j.next_run_time.strftime("%Y-%m-%d %H:%M:%S") if j.next_run_time else "",
+            last_run=status.get("last_run") or "",
+            last_status=status.get("last_status", "pending"),
+            last_error=status.get("last_error") or "",
+        ).model_dump())
+    return {"jobs": items}
+
+@router.post("/scheduler/jobs/{job_id}/trigger")
+def trigger_scheduler_job(job_id: str, admin: User = Depends(require_admin)):
+    if not _scheduler:
+        raise HTTPException(503, "调度器未启动")
+
+    job = None
+    for j in _scheduler.get_jobs():
+        if j.id == job_id:
+            job = j
+            break
+
+    if not job:
+        raise HTTPException(404, f"任务 {job_id} 不存在")
+
+    from threading import Thread
+    t = Thread(target=job.func, daemon=True)
+    t.start()
+    return {"status": "started", "job_id": job_id}
 
 @router.get("/sync/stats")
 def sync_stats(db: Session = Depends(get_db), admin: User = Depends(require_admin)):

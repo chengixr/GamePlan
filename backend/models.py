@@ -30,6 +30,7 @@ class GameResponse(BaseModel):
     name_cn: str = ""
     description: str
     image_url: str
+    fallback_image: str = ""
     price: str
     tags: list[str] = []
 
@@ -65,3 +66,13 @@ class AdminSyncStatusResponse(BaseModel):
 class AdminLogResponse(BaseModel):
     lines: list[str]
     total: int
+
+class AdminSchedulerJobResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    cron: str
+    next_run: str = ""
+    last_run: str = ""
+    last_status: str = "pending"
+    last_error: str = ""

@@ -4,7 +4,7 @@
     <NavBar />
     <main class="main-content">
       <router-view v-slot="{ Component }">
-        <transition name="page-fade" mode="out-in">
+        <transition name="page-fade">
           <component :is="Component" />
         </transition>
       </router-view>
@@ -15,15 +15,12 @@
 <script setup>
 import { onMounted } from 'vue'
 import NavBar from './components/NavBar.vue'
-import { useGamesStore } from './stores/games'
 import { useAuthStore } from './stores/auth'
 
-const gamesStore = useGamesStore()
 const authStore = useAuthStore()
 
-onMounted(async () => {
+onMounted(() => {
   authStore.checkAuth()
-  gamesStore.loadHot(1, 20)
 })
 </script>
 
@@ -104,7 +101,7 @@ a:hover { color: var(--neon-magenta); }
 
 .page-fade-enter-active,
 .page-fade-leave-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity 0.12s ease, transform 0.12s ease;
 }
 .page-fade-enter-from {
   opacity: 0;

@@ -155,13 +155,19 @@ function setupObserver() {
 async function loadMore() {
   if (loadingMore.value) return
   loadingMore.value = true
-  const nextPage = Math.floor(store.hotGames.length / PAGE_SIZE) + 1
-  if (nextPage <= store.hotPage || !hasMore.value) {
+  const games = isHistoryMode.value ? store.historyGames : store.hotGames
+  const curPage = isHistoryMode.value ? store.historyPage : store.hotPage
+  const nextPage = Math.floor(games.length / PAGE_SIZE) + 1
+  if (nextPage <= curPage || !hasMore.value) {
     loadingMore.value = false
     return
   }
   observer?.disconnect()
-  await store.loadHot(nextPage, PAGE_SIZE, true)
+  if (isHistoryMode.value) {
+    await store.loadHistory(historyDate.value, nextPage, PAGE_SIZE, true)
+  } else {
+    await store.loadHot(nextPage, PAGE_SIZE, true)
+  }
   loadingMore.value = false
   if (sentinel.value && observer && hasMore.value) {
     observer.observe(sentinel.value)

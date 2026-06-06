@@ -317,10 +317,10 @@ def sync_steam_data():
                             game.image_url = cdn_img
                     game.updated_at = datetime.now(timezone.utc)
 
-                    # 修复空截图：仅在截图缺失时拉取详情
+                    # 修复空截图：仅在截图缺失时拉取详情（已有游戏跳过 LLM）
                     if not game.screenshots or game.screenshots == "[]":
                         try:
-                            d = _try_fetch_details(game.steam_app_id)
+                            d = _try_fetch_details(game.steam_app_id, skip_llm_tags=True, skip_llm_name=True)
                             if d and d.get("screenshots") and d["screenshots"] != "[]":
                                 game.screenshots = d["screenshots"]
                         except Exception:
@@ -347,7 +347,7 @@ def sync_steam_data():
     finally:
         db.close()
 
-def _try_fetch_details(appid: int) -> dict | None:
+def _try_fetch_details(appid: int, skip_llm_tags: bool = False, skip_llm_name: bool = False) -> dict | None:
     try:
         data = _fetch_json(f"appdetails?appids={appid}&cc=cn&l=schinese", timeout=20)
         gd = data.get(str(appid), {}).get("data", {})
@@ -356,15 +356,16 @@ def _try_fetch_details(appid: int) -> dict | None:
         tags = [translate_tag(g.get("description", "")) for g in gd.get("genres", [])]
 
         # LLM 标签补充
-        desc_for_llm = gd.get("detailed_description", "") or gd.get("short_description", "")
-        if desc_for_llm:
-            try:
-                from llm import extract_tags
-                llm_tags = extract_tags(desc_for_llm)
-                for t in llm_tags:
-                    if t not in tags:
-                        tags.append(t)
-            except: pass
+        if not skip_llm_tags:
+            desc_for_llm = gd.get("detailed_description", "") or gd.get("short_description", "")
+            if desc_for_llm:
+                try:
+                    from llm import extract_tags
+                    llm_tags = extract_tags(desc_for_llm)
+                    for t in llm_tags:
+                        if t not in tags:
+                            tags.append(t)
+                except: pass
 
         # 去重：合并相近标签，去除低价值标签
         from tag_library import dedup_tags
@@ -387,7 +388,7 @@ def _try_fetch_details(appid: int) -> dict | None:
 
         name_cn = gd.get("name", "")
         # LLM 生成中文名（如果 Steam 没返回中文名或与英文名相同则用 LLM）
-        if not name_cn or name_cn == gd.get("name", "") or not any('\u4e00' <= c <= '\u9fff' for c in name_cn):
+        if not skip_llm_name and (not name_cn or name_cn == gd.get("name", "") or not any('\u4e00' <= c <= '\u9fff' for c in name_cn)):
             try:
                 from llm import generate_chinese_name
                 llm_cn = generate_chinese_name(
@@ -487,7 +488,11 @@ def catchup_sync():
         img_ok = 0
         for game in incomplete:
             try:
-                d = _try_fetch_details(game.steam_app_id)
+                d = _try_fetch_details(
+                    game.steam_app_id,
+                    skip_llm_tags=bool(game.tags),
+                    skip_llm_name=bool(game.name_cn),
+                )
                 if d:
                     if not game.screenshots or game.screenshots == "[]":
                         game.screenshots = d.get("screenshots", "[]")

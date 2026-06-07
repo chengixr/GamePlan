@@ -502,7 +502,7 @@ def catchup_sync():
 def daily_llm_enrich():
     """每天 23:00 对当日热销榜中未处理的游戏统一调用 LLM 提取标签。"""
     from datetime import date
-    from llm import enrich_game, translate_game_name, _is_available, _circuit_is_open
+    from llm import enrich_game, batch_translate_names, _is_available, _circuit_is_open
 
     if not _is_available():
         logger.info("[llm] daily_llm_enrich 跳过 (LLM disabled)")
@@ -556,14 +556,6 @@ def daily_llm_enrich():
                             db.execute(game_tag_assoc.insert().values(game_id=game.id, tag_id=tag.id))
                     enriched += 1
                 game.llm_tags_enriched = True
-
-                # 无中文名时翻译游戏名称
-                if not game.name_cn:
-                    try:
-                        cn = translate_game_name(game.name)
-                        if cn:
-                            game.name_cn = cn
-                    except: pass
             except Exception as e:
                 logger.warning(f"[llm] daily_llm_enrich 游戏 {game.steam_app_id} 失败: {e}")
                 # 熔断检查：如果 circuit open 则终止后续处理
@@ -576,6 +568,24 @@ def daily_llm_enrich():
                 logger.info(f"[llm] daily_llm_enrich 进度: {enriched}/{len(games)}")
 
         db.commit()
+
+        # 批量翻译无中文名的游戏名称（一次 API 调用）
+        games_no_cn = [g for g in games if g.llm_tags_enriched and not g.name_cn]
+        if games_no_cn and not _circuit_is_open():
+            names_to_translate = [g.name for g in games_no_cn]
+            logger.info(f"[llm] daily_llm_enrich: 批量翻译 {len(names_to_translate)} 款游戏中文名")
+            try:
+                mapping = batch_translate_names(names_to_translate)
+                for g in games_no_cn:
+                    cn = mapping.get(g.name)
+                    if cn:
+                        g.name_cn = cn
+                db.commit()
+                logger.info(f"[llm] daily_llm_enrich: 批量翻译完成 {len(mapping)}/{len(names_to_translate)}")
+            except Exception as e:
+                logger.warning(f"[llm] daily_llm_enrich 批量翻译失败: {e}")
+                db.rollback()
+
         from recommender import clear_recommender_cache
         clear_recommender_cache()
         logger.info(f"[llm] daily_llm_enrich 完成: {enriched}/{len(games)} 款游戏已提取标签")

@@ -120,17 +120,40 @@ def enrich_game(description: str) -> list[str]:
     logger.info(f"enrich_game tags={valid}")
     return valid
 
-def translate_game_name(en_name: str) -> str:
-    """翻译英文游戏名为中文。仅 daily_llm_enrich 中无中文名的游戏调用。"""
-    if not en_name:
-        return ""
+def batch_translate_names(en_names: list[str]) -> dict[str, str]:
+    """批量翻译英文游戏名为中文，一次 API 调用处理全部。"""
+    if not en_names:
+        return {}
+    # 去重
+    unique = list(dict.fromkeys(en_names))
+    numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(unique))
     result = _chat([
-        {"role": "system", "content": "你是游戏本地化专家。将英文游戏名翻译为简体中文名（不超过15字）。只返回中文名，不要解释或额外内容。"},
-        {"role": "user", "content": en_name},
-    ], max_tokens=20, caller="translate_game_name")
-    if result:
-        logger.info(f"translate_game_name en={en_name} -> cn={result}")
-    return result[:30] if result else ""
+        {"role": "system", "content": (
+            "你是游戏本地化专家。下面是一批英文游戏名，请将每个翻译为简体中文名（每个不超过15字）。\n"
+            "严格遵守输出格式，每行：序号. 中文名\n"
+            "不要解释，不要额外内容。"
+        )},
+        {"role": "user", "content": numbered},
+    ], max_tokens=len(unique) * 15, caller="batch_translate_names")
+    if not result:
+        return {}
+
+    mapping: dict[str, str] = {}
+    for line in result.split("\n"):
+        line = line.strip()
+        for sep in (". ", ".", " "):
+            if sep in line:
+                parts = line.split(sep, 1)
+                idx_str, cn = parts[0].strip(), parts[1].strip()
+                try:
+                    idx = int(idx_str) - 1
+                    if 0 <= idx < len(unique) and cn:
+                        mapping[unique[idx]] = cn
+                except ValueError:
+                    pass
+                break
+    logger.info(f"batch_translate_names {len(unique)} names -> {len(mapping)} translations")
+    return mapping
 
 def get_embedding(text: str) -> list[float]:
     return []

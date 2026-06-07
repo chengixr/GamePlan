@@ -120,6 +120,18 @@ def enrich_game(description: str) -> list[str]:
     logger.info(f"enrich_game tags={valid}")
     return valid
 
+def translate_game_name(en_name: str) -> str:
+    """翻译英文游戏名为中文。仅 daily_llm_enrich 中无中文名的游戏调用。"""
+    if not en_name:
+        return ""
+    result = _chat([
+        {"role": "system", "content": "你是游戏本地化专家。将英文游戏名翻译为简体中文名（不超过15字）。只返回中文名，不要解释或额外内容。"},
+        {"role": "user", "content": en_name},
+    ], max_tokens=20, caller="translate_game_name")
+    if result:
+        logger.info(f"translate_game_name en={en_name} -> cn={result}")
+    return result[:30] if result else ""
+
 def get_embedding(text: str) -> list[float]:
     return []
 

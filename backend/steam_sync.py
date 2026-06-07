@@ -502,7 +502,7 @@ def catchup_sync():
 def daily_llm_enrich():
     """每天 23:00 对当日热销榜中未处理的游戏统一调用 LLM 提取标签。"""
     from datetime import date
-    from llm import enrich_game, _is_available, _circuit_is_open
+    from llm import enrich_game, translate_game_name, _is_available, _circuit_is_open
 
     if not _is_available():
         logger.info("[llm] daily_llm_enrich 跳过 (LLM disabled)")
@@ -556,6 +556,14 @@ def daily_llm_enrich():
                             db.execute(game_tag_assoc.insert().values(game_id=game.id, tag_id=tag.id))
                     enriched += 1
                 game.llm_tags_enriched = True
+
+                # 无中文名时翻译游戏名称
+                if not game.name_cn:
+                    try:
+                        cn = translate_game_name(game.name)
+                        if cn:
+                            game.name_cn = cn
+                    except: pass
             except Exception as e:
                 logger.warning(f"[llm] daily_llm_enrich 游戏 {game.steam_app_id} 失败: {e}")
                 # 熔断检查：如果 circuit open 则终止后续处理

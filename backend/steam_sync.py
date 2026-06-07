@@ -318,36 +318,11 @@ def sync_steam_data():
                     game.updated_at = datetime.now(timezone.utc)
 
                     # 修复空截图：仅在截图缺失时拉取详情（已有游戏跳过 LLM）
-                    need_screenshots = not game.screenshots or game.screenshots == "[]"
-                    # 补充 LLM 数据：ranking_sync 入库的游戏无 LLM 标签和中文名
-                    need_enrich = not game.name_cn
-                    if need_screenshots or need_enrich:
+                    if not game.screenshots or game.screenshots == "[]":
                         try:
-                            d = _try_fetch_details(
-                                game.steam_app_id,
-                                skip_llm_tags=not need_enrich,
-                                skip_llm_name=not need_enrich,
-                            )
-                            if d:
-                                if need_screenshots and d.get("screenshots") and d["screenshots"] != "[]":
-                                    game.screenshots = d["screenshots"]
-                                if need_enrich:
-                                    if d.get("name_cn"):
-                                        game.name_cn = d["name_cn"]
-                                    if d.get("tags"):
-                                        for tag_name in d["tags"]:
-                                            tag = db.query(Tag).filter(Tag.name == tag_name).first()
-                                            if not tag:
-                                                tag = Tag(name=tag_name)
-                                                db.add(tag); db.flush()
-                                            existing_assoc = db.execute(
-                                                game_tag_assoc.select().where(
-                                                    game_tag_assoc.c.game_id == game.id,
-                                                    game_tag_assoc.c.tag_id == tag.id,
-                                                )
-                                            ).first()
-                                            if not existing_assoc:
-                                                db.execute(game_tag_assoc.insert().values(game_id=game.id, tag_id=tag.id))
+                            d = _try_fetch_details(game.steam_app_id, skip_llm_tags=True, skip_llm_name=True)
+                            if d and d.get("screenshots") and d["screenshots"] != "[]":
+                                game.screenshots = d["screenshots"]
                         except Exception:
                             pass
                 gid = game.id if game else None
@@ -382,18 +357,15 @@ def _try_fetch_details(appid: int, skip_llm_tags: bool = False, skip_llm_name: b
 
         name_cn = gd.get("name", "")
 
-        # LLM 补充标签和中文名（仅 sync_steam_data 新游戏调用，合并为一次请求）
+        # LLM 标签补充（仅 sync_steam_data 新游戏调用）
         if not skip_llm_tags:
             desc_for_llm = gd.get("detailed_description", "") or gd.get("short_description", "")
             if desc_for_llm:
                 try:
                     from llm import enrich_game
-                    llm_tags, llm_cn = enrich_game(gd.get("name", ""), desc_for_llm)
-                    for t in llm_tags:
+                    for t in enrich_game(desc_for_llm):
                         if t not in tags:
                             tags.append(t)
-                    if llm_cn:
-                        name_cn = llm_cn
                 except: pass
 
         # 去重：合并相近标签，去除低价值标签

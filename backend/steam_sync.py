@@ -317,10 +317,10 @@ def sync_steam_data():
                             game.image_url = cdn_img
                     game.updated_at = datetime.now(timezone.utc)
 
-                    # 修复空截图：仅在截图缺失时拉取详情（已有游戏跳过 LLM）
+                    # 修复空截图：仅在截图缺失时拉取详情
                     if not game.screenshots or game.screenshots == "[]":
                         try:
-                            d = _try_fetch_details(game.steam_app_id, skip_llm_tags=True, skip_llm_name=True)
+                            d = _try_fetch_details(game.steam_app_id)
                             if d and d.get("screenshots") and d["screenshots"] != "[]":
                                 game.screenshots = d["screenshots"]
                         except Exception:
@@ -347,7 +347,7 @@ def sync_steam_data():
     finally:
         db.close()
 
-def _try_fetch_details(appid: int, skip_llm_tags: bool = False, skip_llm_name: bool = False) -> dict | None:
+def _try_fetch_details(appid: int) -> dict | None:
     try:
         data = _fetch_json(f"appdetails?appids={appid}&cc=cn&l=schinese", timeout=20)
         gd = data.get(str(appid), {}).get("data", {})
@@ -356,17 +356,6 @@ def _try_fetch_details(appid: int, skip_llm_tags: bool = False, skip_llm_name: b
         tags = [translate_tag(g.get("description", "")) for g in gd.get("genres", [])]
 
         name_cn = gd.get("name", "")
-
-        # LLM 标签补充（仅 sync_steam_data 新游戏调用）
-        if not skip_llm_tags:
-            desc_for_llm = gd.get("detailed_description", "") or gd.get("short_description", "")
-            if desc_for_llm:
-                try:
-                    from llm import enrich_game
-                    for t in enrich_game(desc_for_llm):
-                        if t not in tags:
-                            tags.append(t)
-                except: pass
 
         # 去重：合并相近标签，去除低价值标签
         from tag_library import dedup_tags
@@ -476,11 +465,7 @@ def catchup_sync():
         img_ok = 0
         for game in incomplete:
             try:
-                d = _try_fetch_details(
-                    game.steam_app_id,
-                    skip_llm_tags=True,
-                    skip_llm_name=True,
-                )
+                d = _try_fetch_details(game.steam_app_id)
                 if d:
                     if not game.screenshots or game.screenshots == "[]":
                         game.screenshots = d.get("screenshots", "[]")
@@ -510,6 +495,85 @@ def catchup_sync():
     except Exception as e:
         db.rollback()
         logger.error(f"追补同步失败: {e}")
+    finally:
+        db.close()
+
+
+def daily_llm_enrich():
+    """每天 23:00 对当日热销榜中未处理的游戏统一调用 LLM 提取标签。"""
+    from datetime import date
+    from llm import enrich_game, _is_available, _circuit_is_open
+
+    if not _is_available():
+        logger.info("[llm] daily_llm_enrich 跳过 (LLM disabled)")
+        return
+    if _circuit_is_open():
+        logger.info("[llm] daily_llm_enrich 跳过 (circuit open)")
+        return
+
+    today = date.today()
+    db = SessionLocal()
+    try:
+        # 当日热销榜中未 LLM 处理的游戏
+        today_ids = {row[0] for row in db.query(DailyTopSeller.game_id).filter(DailyTopSeller.date == today).all()}
+        if not today_ids:
+            logger.info(f"[llm] daily_llm_enrich: {today} 无热销榜数据，跳过")
+            return
+
+        games = db.query(Game).filter(
+            Game.id.in_(today_ids),
+            Game.llm_tags_enriched == False,
+            Game.description != "",
+        ).all()
+
+        if not games:
+            logger.info(f"[llm] daily_llm_enrich: {today} 热销榜 {len(today_ids)} 款游戏均已处理，跳过")
+            return
+
+        logger.info(f"[llm] daily_llm_enrich: {today} 热销榜 {len(today_ids)} 款，未处理 {len(games)} 款，开始提取标签")
+
+        enriched = 0
+        for game in games:
+            desc = (game.description or "")[:2000]
+            if len(desc) < 20:
+                game.llm_tags_enriched = True
+                continue
+            try:
+                llm_tags = enrich_game(desc)
+                if llm_tags:
+                    for tag_name in llm_tags:
+                        tag = db.query(Tag).filter(Tag.name == tag_name).first()
+                        if not tag:
+                            tag = Tag(name=tag_name)
+                            db.add(tag); db.flush()
+                        existing_assoc = db.execute(
+                            game_tag_assoc.select().where(
+                                game_tag_assoc.c.game_id == game.id,
+                                game_tag_assoc.c.tag_id == tag.id,
+                            )
+                        ).first()
+                        if not existing_assoc:
+                            db.execute(game_tag_assoc.insert().values(game_id=game.id, tag_id=tag.id))
+                    enriched += 1
+                game.llm_tags_enriched = True
+            except Exception as e:
+                logger.warning(f"[llm] daily_llm_enrich 游戏 {game.steam_app_id} 失败: {e}")
+                # 熔断检查：如果 circuit open 则终止后续处理
+                if _circuit_is_open():
+                    logger.warning("[llm] daily_llm_enrich 熔断，终止后续处理")
+                    break
+
+            if enriched % 10 == 0 and enriched > 0:
+                db.commit()
+                logger.info(f"[llm] daily_llm_enrich 进度: {enriched}/{len(games)}")
+
+        db.commit()
+        from recommender import clear_recommender_cache
+        clear_recommender_cache()
+        logger.info(f"[llm] daily_llm_enrich 完成: {enriched}/{len(games)} 款游戏已提取标签")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[llm] daily_llm_enrich 异常: {e}")
     finally:
         db.close()
 
@@ -545,6 +609,8 @@ def start_scheduler():
     _scheduler.add_job(sync_steam_data, "cron", hour="0,6,12,18", minute=17, id="sync_steam_data")
     # 每天 19:17 追补同步
     _scheduler.add_job(catchup_sync, "cron", hour=19, minute=17, id="catchup_sync")
+    # 每天 23:00 统一 LLM 标签提取
+    _scheduler.add_job(daily_llm_enrich, "cron", hour=23, minute=7, id="daily_llm_enrich")
     # 每天凌晨 3 点清理过期日志
     from logger_config import clean_old_logs
     _scheduler.add_job(clean_old_logs, "cron", hour=3, minute=0, id="clean_old_logs")

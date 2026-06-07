@@ -138,6 +138,7 @@ _JOB_META = {
     "sync_rankings": {"name": "排名快照同步", "description": "每小时从 Steam 搜索页抓取热销前 100 名排名，缺失游戏自动拉取详情入库", "cron": "每小时第 13 分"},
     "sync_steam_data": {"name": "完整数据同步", "description": "多源同步（API+搜索+SteamCharts），更新游戏详情、截图、标签、评价", "cron": "每天 00:17, 06:17, 12:17, 18:17 (UTC)"},
     "catchup_sync": {"name": "追补同步", "description": "补录当天缺失的排名记录，补充数据不完整游戏的截图/描述/标签", "cron": "每天 19:17 (UTC)"},
+    "daily_llm_enrich": {"name": "LLM 标签提取", "description": "对当日热销榜中未处理的游戏统一调用 LLM 提取标签，已处理过的跳过", "cron": "每天 23:07 (UTC)"},
     "clean_old_logs": {"name": "日志清理", "description": "清理 30 天前的过期日志文件", "cron": "每天 03:00 (UTC)"},
 }
 

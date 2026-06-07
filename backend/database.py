@@ -47,6 +47,7 @@ class Game(Base):
     screenshots = Column(Text, default="[]")
     review_summary = Column(Text, default="{}")
     reviews_synced_at = Column(DateTime, nullable=True)
+    llm_tags_enriched = Column(Boolean, default=False)
     user_reviews = Column(Text, default="[]")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -96,6 +97,16 @@ class UserSession(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime, nullable=False)
+
+
+class SteamRanking(Base):
+    """每小时同步的 Steam 热销排名快照（仅排名和名称，不含详情）"""
+    __tablename__ = "steam_rankings"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    steam_app_id = Column(Integer, nullable=False, index=True)
+    name = Column(String(256), nullable=False)
+    rank = Column(Integer, nullable=False)
+    snapshot_time = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 def init_db():
     Base.metadata.create_all(bind=engine)

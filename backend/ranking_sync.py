@@ -103,16 +103,6 @@ def _fetch_game_details(appid: int) -> dict | None:
         from tag_translations import translate_tag
         tags = [translate_tag(g.get("description", "")) for g in gd.get("genres", [])]
 
-        # LLM 标签补充
-        desc_for_llm = gd.get("detailed_description", "") or gd.get("short_description", "")
-        if desc_for_llm:
-            try:
-                from llm import extract_tags
-                for t in extract_tags(desc_for_llm):
-                    if t not in tags:
-                        tags.append(t)
-            except: pass
-
         from tag_library import dedup_tags
         tags = dedup_tags(tags)
 
@@ -121,16 +111,6 @@ def _fetch_game_details(appid: int) -> dict | None:
         total_reviews = recs.get("total_reviews", 0) or (review_positive * 100 // 80 if review_positive else 0)
 
         name_cn = gd.get("name", "")
-        if not name_cn or not any('\u4e00' <= c <= '\u9fff' for c in name_cn):
-            try:
-                from llm import generate_chinese_name
-                llm_cn = generate_chinese_name(
-                    gd.get("name", ""),
-                    gd.get("short_description", "") or gd.get("detailed_description", "")
-                )
-                if llm_cn:
-                    name_cn = llm_cn
-            except: pass
 
         return {
             "name": gd.get("name", ""),

@@ -318,11 +318,36 @@ def sync_steam_data():
                     game.updated_at = datetime.now(timezone.utc)
 
                     # 修复空截图：仅在截图缺失时拉取详情（已有游戏跳过 LLM）
-                    if not game.screenshots or game.screenshots == "[]":
+                    need_screenshots = not game.screenshots or game.screenshots == "[]"
+                    # 补充 LLM 数据：ranking_sync 入库的游戏无 LLM 标签和中文名
+                    need_enrich = not game.name_cn
+                    if need_screenshots or need_enrich:
                         try:
-                            d = _try_fetch_details(game.steam_app_id, skip_llm_tags=True, skip_llm_name=True)
-                            if d and d.get("screenshots") and d["screenshots"] != "[]":
-                                game.screenshots = d["screenshots"]
+                            d = _try_fetch_details(
+                                game.steam_app_id,
+                                skip_llm_tags=not need_enrich,
+                                skip_llm_name=not need_enrich,
+                            )
+                            if d:
+                                if need_screenshots and d.get("screenshots") and d["screenshots"] != "[]":
+                                    game.screenshots = d["screenshots"]
+                                if need_enrich:
+                                    if d.get("name_cn"):
+                                        game.name_cn = d["name_cn"]
+                                    if d.get("tags"):
+                                        for tag_name in d["tags"]:
+                                            tag = db.query(Tag).filter(Tag.name == tag_name).first()
+                                            if not tag:
+                                                tag = Tag(name=tag_name)
+                                                db.add(tag); db.flush()
+                                            existing_assoc = db.execute(
+                                                game_tag_assoc.select().where(
+                                                    game_tag_assoc.c.game_id == game.id,
+                                                    game_tag_assoc.c.tag_id == tag.id,
+                                                )
+                                            ).first()
+                                            if not existing_assoc:
+                                                db.execute(game_tag_assoc.insert().values(game_id=game.id, tag_id=tag.id))
                         except Exception:
                             pass
                 gid = game.id if game else None
@@ -355,16 +380,20 @@ def _try_fetch_details(appid: int, skip_llm_tags: bool = False, skip_llm_name: b
             return None
         tags = [translate_tag(g.get("description", "")) for g in gd.get("genres", [])]
 
-        # LLM 标签补充
+        name_cn = gd.get("name", "")
+
+        # LLM 补充标签和中文名（仅 sync_steam_data 新游戏调用，合并为一次请求）
         if not skip_llm_tags:
             desc_for_llm = gd.get("detailed_description", "") or gd.get("short_description", "")
             if desc_for_llm:
                 try:
-                    from llm import extract_tags
-                    llm_tags = extract_tags(desc_for_llm)
+                    from llm import enrich_game
+                    llm_tags, llm_cn = enrich_game(gd.get("name", ""), desc_for_llm)
                     for t in llm_tags:
                         if t not in tags:
                             tags.append(t)
+                    if llm_cn:
+                        name_cn = llm_cn
                 except: pass
 
         # 去重：合并相近标签，去除低价值标签
@@ -385,19 +414,6 @@ def _try_fetch_details(appid: int, skip_llm_tags: bool = False, skip_llm_name: b
         review_positive = recs.get("total", 0)
         total_reviews = recs.get("total_reviews", 0) or (review_positive * 100 // 80 if review_positive else 0)
         review_summary = json.dumps({"positive": review_positive, "total": total_reviews})
-
-        name_cn = gd.get("name", "")
-        # LLM 生成中文名（如果 Steam 没返回中文名或与英文名相同则用 LLM）
-        if not skip_llm_name and (not name_cn or name_cn == gd.get("name", "") or not any('\u4e00' <= c <= '\u9fff' for c in name_cn)):
-            try:
-                from llm import generate_chinese_name
-                llm_cn = generate_chinese_name(
-                    gd.get("name", ""),
-                    gd.get("short_description", "") or gd.get("detailed_description", "")
-                )
-                if llm_cn:
-                    name_cn = llm_cn
-            except: pass
 
         return {
             "name": gd.get("name", ""),
@@ -490,8 +506,8 @@ def catchup_sync():
             try:
                 d = _try_fetch_details(
                     game.steam_app_id,
-                    skip_llm_tags=bool(game.tags),
-                    skip_llm_name=bool(game.name_cn),
+                    skip_llm_tags=True,
+                    skip_llm_name=True,
                 )
                 if d:
                     if not game.screenshots or game.screenshots == "[]":

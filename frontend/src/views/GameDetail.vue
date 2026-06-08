@@ -39,7 +39,7 @@
       <img :src="currentImg" class="main-img" />
       <div class="thumbs">
         <img v-for="(s, i) in screenshots.slice(0, 8)" :key="i"
-          :src="s" class="thumb" :class="{ active: i === activeIdx }"
+          :src="s.thumb || s.large || s" class="thumb" :class="{ active: i === activeIdx }"
           loading="lazy"
           @click="activeIdx = i" />
       </div>
@@ -133,8 +133,21 @@ watch(() => route.params.id, async (newId) => {
 
 const game = computed(() => store.currentGame)
 const activeIdx = ref(0)
-const screenshots = computed(() => game.value?.screenshots || [])
-const currentImg = computed(() => screenshots.value[activeIdx.value] || game.value?.image_url || '')
+const screenshots = computed(() => {
+  const raw = game.value?.screenshots || []
+  // 兼容旧格式 (string[]) 和新格式 ([{thumb, large}])
+  if (raw.length > 0 && typeof raw[0] === 'string') {
+    return raw.map(s => ({ thumb: s, large: s }))
+  }
+  return raw
+})
+const currentImg = computed(() => {
+  const ss = screenshots.value
+  if (ss.length > 0 && ss[activeIdx.value]) {
+    return ss[activeIdx.value].large || ss[activeIdx.value].thumb || ''
+  }
+  return game.value?.image_large || game.value?.image_url || ''
+})
 const rating = ref(0)
 const showRankHistory = ref(false)
 const simImgFailed = reactive({})

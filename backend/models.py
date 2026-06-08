@@ -30,6 +30,7 @@ class GameResponse(BaseModel):
     name_cn: str = ""
     description: str
     image_url: str
+    image_large: str = ""
     fallback_image: str = ""
     price: str
     tags: list[str] = []

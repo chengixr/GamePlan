@@ -42,6 +42,8 @@ class Game(Base):
     name_cn = Column(String(256), default="")
     description = Column(Text, default="")
     image_url = Column(String(512), default="")
+    image_large = Column(String(512), default="")
+    fallback_image = Column(String(512), default="")
     price = Column(String(32), default="")
     release_date = Column(String(32), default="")
     screenshots = Column(Text, default="[]")
@@ -118,3 +120,20 @@ class SteamRanking(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _migrate_columns()
+
+
+def _migrate_columns():
+    """为已有数据库添加缺失的列"""
+    from sqlalchemy import text, inspect
+    inspector = inspect(engine)
+    existing = {c['name'] for c in inspector.get_columns('games')}
+    migrations = [
+        ("image_large", "VARCHAR(512) DEFAULT ''"),
+        ("fallback_image", "VARCHAR(512) DEFAULT ''"),
+    ]
+    with engine.connect() as conn:
+        for col_name, col_def in migrations:
+            if col_name not in existing:
+                conn.execute(text(f"ALTER TABLE games ADD COLUMN {col_name} {col_def}"))
+        conn.commit()

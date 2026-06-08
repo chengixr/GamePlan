@@ -68,23 +68,13 @@ def top_sellers(
             for r in rankings:
                 game = games_map.get(r.steam_app_id)
                 if game:
-                    # 图片回退：仅使用本地存在的截图
-                    fallback = ""
-                    try:
-                        ss = json.loads(game.screenshots or "[]")
-                        for s in ss:
-                            if s.startswith("/static/"):
-                                fallback = s
-                                break
-                    except Exception:
-                        pass
-
                     all_items.append(GameResponse(
                         id=game.id, steam_app_id=game.steam_app_id,
                         name=game.name, name_cn=game.name_cn or "",
                         description=game.description or "",
                         image_url=game.image_url or "",
-                        fallback_image=fallback,
+                        image_large=game.image_large or game.image_url or "",
+                        fallback_image=game.fallback_image or "",
                         price=game.price or "",
                         tags=[t.name for t in game.tags],
                     ))
@@ -108,16 +98,6 @@ def recommended(
     for gid in paged_ids:
         game = db.query(Game).options(joinedload(Game.tags)).filter(Game.id == gid).first()
         if game:
-            fallback = ""
-            try:
-                ss = json.loads(game.screenshots or "[]")
-                for s in ss:
-                    if s.startswith("/static/"):
-                        fallback = s
-                        break
-            except Exception:
-                pass
-
             items.append(GameResponse(
                 id=game.id,
                 steam_app_id=game.steam_app_id,
@@ -125,7 +105,8 @@ def recommended(
                 name_cn=game.name_cn or "",
                 description=game.description or "",
                 image_url=game.image_url or "",
-                fallback_image=fallback,
+                image_large=game.image_large or game.image_url or "",
+                fallback_image=game.fallback_image or "",
                 price=game.price or "",
                 tags=[t.name for t in game.tags],
             ))
@@ -164,6 +145,8 @@ def top_sellers_history(
                 name_cn=game.name_cn or "",
                 description=game.description or "",
                 image_url=game.image_url or "",
+                image_large=game.image_large or game.image_url or "",
+                fallback_image=game.fallback_image or "",
                 price=game.price or "",
                 tags=[t.name for t in game.tags],
             ))
@@ -229,7 +212,10 @@ def game_detail(game_id: int, db: Session = Depends(get_db)):
                 similar.append(GameResponse(
                     id=sg.id, steam_app_id=sg.steam_app_id, name=sg.name,
                     name_cn=sg.name_cn or "", description=sg.description or "",
-                    image_url=sg.image_url or "", price=sg.price or "",
+                    image_url=sg.image_url or "",
+                    image_large=sg.image_large or sg.image_url or "",
+                    fallback_image=sg.fallback_image or "",
+                    price=sg.price or "",
                     tags=[t.name for t in sg.tags],
                 ))
     except: pass
@@ -239,6 +225,8 @@ def game_detail(game_id: int, db: Session = Depends(get_db)):
         "name": game.name, "name_cn": game.name_cn or "",
         "description": game.description or "",
         "image_url": game.image_url or "",
+        "image_large": game.image_large or game.image_url or "",
+        "fallback_image": game.fallback_image or "",
         "price": game.price or "",
         "release_date": game.release_date or "",
         "tags": [t.name for t in game.tags],

@@ -69,6 +69,8 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(games_router, prefix="/api/games", tags=["games"])
 app.include_router(ratings_router, prefix="/api/ratings", tags=["ratings"])
+from favorites import router as favorites_router
+app.include_router(favorites_router, prefix="/api/favorites", tags=["favorites"])
 from admin import router as admin_router
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
 

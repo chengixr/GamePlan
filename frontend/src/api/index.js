@@ -73,4 +73,7 @@ export const api = {
     request(`/admin/logs?target_date=${date}&level=${level}&lines=${lines}`),
   adminSchedulerJobs: () => request('/admin/scheduler/jobs'),
   adminSchedulerTrigger: (jobId) => request(`/admin/scheduler/jobs/${jobId}/trigger`, { method: 'POST' }),
+  toggleFavorite: (gameId) => request(`/favorites/${gameId}`, { method: 'POST' }),
+  favoriteIds: () => request('/favorites/ids'),
+  favorites: (page = 1, pageSize = 20) => request(`/favorites?page=${page}&page_size=${pageSize}`),
 }

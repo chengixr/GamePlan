@@ -31,6 +31,7 @@
         @load="onImgLoad"
         @error="onImgError"
       />
+      <FavoriteButton v-if="auth.user" :game-id="game.id" />
       <div class="card-rank" v-if="rank">{{ rank }}</div>
       <div class="price-badge">{{ game.price }}</div>
     </div>
@@ -53,10 +54,13 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import StarRating from './StarRating.vue'
+import FavoriteButton from './FavoriteButton.vue'
 import { useGamesStore } from '../stores/games'
+import { useAuthStore } from '../stores/auth'
 
 const props = defineProps({ game: Object, rank: Number, showRating: { type: Boolean, default: true } })
 const store = useGamesStore()
+const auth = useAuthStore()
 const rating = ref(store.myRatings[props.game.id] || 0)
 
 const imgLoaded = ref(false)

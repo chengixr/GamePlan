@@ -10,6 +10,7 @@
           <h1 class="hero-title">
             <span class="hero-name">{{ game.name }}</span>
             <span class="hero-name-cn" v-if="game.name_cn && game.name_cn !== game.name">{{ game.name_cn }}</span>
+            <FavoriteButton v-if="auth.user" :game-id="game.id" class="fav-inline" />
           </h1>
           <div class="hero-tags"><span v-for="t in game.tags" :key="t" class="hero-tag">{{ t }}</span></div>
           <div class="hero-meta">
@@ -108,6 +109,7 @@ import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StarRating from '../components/StarRating.vue'
 import RankHistory from '../components/RankHistory.vue'
+import FavoriteButton from '../components/FavoriteButton.vue'
 import { useGamesStore } from '../stores/games'
 import { useAuthStore } from '../stores/auth'
 
@@ -353,4 +355,5 @@ onBeforeUnmount(() => {
   .review-columns { column-count: 1; }
   .similar-grid { grid-template-columns: repeat(2, 1fr); }
 }
+.fav-inline :deep(.fav-btn) { position: static; display: inline-flex; vertical-align: middle; margin-left: 8px; }
 </style>

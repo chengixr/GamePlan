@@ -72,12 +72,81 @@ def _curl_download(url: str, output_path: str, timeout: int = 12) -> bool:
         return False
 
 
+def _download_and_process_header(appid: int, url: str = None) -> tuple[str, str, str]:
+    """
+    下载头图 → 管线处理 → 删除原图。
+    返回 (small_url, large_url, fallback_url)，默认使用 webp 格式。
+    """
+    from image_processor import process_header, header_urls, cdn_fallback, HEADERS_DIR, HEADER_SIZES
+
+    # 检查处理后的文件是否已存在
+    existing = os.path.join(HEADERS_DIR, f"{appid}_{HEADER_SIZES['small']}w.webp")
+    if os.path.exists(existing) and os.path.getsize(existing) > 0:
+        urls = header_urls(appid, "webp")
+        return urls["small"], urls["large"], urls["fallback"]
+
+    # 下载原图
+    tmp_path = os.path.join(IMAGES_DIR, f"{appid}_tmp.jpg")
+    download_url = url or f"{STEAM_IMG_CDN}/{appid}/header.jpg"
+    if not _curl_download(download_url, tmp_path):
+        fallback = cdn_fallback(appid)
+        return fallback, fallback, fallback
+
+    # 管线处理
+    process_header(appid, tmp_path)
+    # 删除原图和临时文件
+    if os.path.exists(tmp_path):
+        os.remove(tmp_path)
+    old_path = _local_image_path(appid)
+    if os.path.exists(old_path):
+        os.remove(old_path)
+
+    urls = header_urls(appid, "webp")
+    if urls["small"]:
+        return urls["small"], urls["large"], urls["fallback"]
+    fallback = cdn_fallback(appid)
+    return fallback, fallback, fallback
+
+
 def _download_image(appid: int, url: str = None) -> bool:
     local_path = _local_image_path(appid)
     if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
         return True
     download_url = url or f"{STEAM_IMG_CDN}/{appid}/header.jpg"
     return _curl_download(download_url, local_path)
+
+
+def _download_and_process_screenshots(appid: int, steam_urls: list[str]) -> list[dict]:
+    """
+    下载前 3 张截图 → 管线处理 → 删除原图。
+    返回 [{"thumb": "/static/...", "large": "/static/..."}, ...]
+    """
+    from image_processor import process_screenshot, screenshot_urls
+
+    # 检查是否已有处理后的文件
+    existing = screenshot_urls(appid, 10, "webp")
+    if existing:
+        return existing
+
+    results = []
+    for idx, url in enumerate(steam_urls[:3]):  # 最多 3 张
+        tmp_path = os.path.join(SCREENSHOTS_DIR, f"{appid}_{idx}_tmp.jpg")
+        if not _curl_download(url, tmp_path, timeout=15):
+            continue
+        result = process_screenshot(appid, idx, tmp_path)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        # 删除旧格式原图
+        old_path = os.path.join(SCREENSHOTS_DIR, f"{appid}_{idx}.jpg")
+        if os.path.exists(old_path):
+            os.remove(old_path)
+        if result:
+            results.append({
+                "thumb": result.get("thumb", {}).get("webp", ""),
+                "large": result.get("large", {}).get("webp", ""),
+            })
+
+    return results
 
 
 def _download_screenshots(appid: int, steam_urls: list[str]) -> list[str]:
@@ -270,9 +339,14 @@ def sync_steam_data():
                 time.sleep(0.5)
                 details = _try_fetch_details(appid); detail_count += 1
 
-                downloaded = _download_image(appid, item.get("header_image"))
-                if downloaded:
+                # 头图下载 + 管线处理
+                small_url, large_url, fallback = _download_and_process_header(appid, item.get("header_image"))
+                if small_url and not small_url.startswith("https://"):
                     img_ok += 1
+
+                # 截图下载 + 管线处理
+                ss_urls = details.get("steam_screenshot_urls", []) if details else []
+                screenshot_list = _download_and_process_screenshots(appid, ss_urls)
 
                 # 名称优先用 details，避免搜索抓取的空名
                 en_name = (details.get("name", "") if details else "") or item.get("name", "")
@@ -281,10 +355,12 @@ def sync_steam_data():
                     name=en_name,
                     name_cn=details.get("name_cn", "") if details else "",
                     description=details.get("description", "") if details else "",
-                    image_url=local_img if downloaded else cdn_img,
+                    image_url=small_url,
+                    image_large=large_url,
+                    fallback_image=fallback,
                     price=item["price"],
                     release_date=details.get("release_date", "") if details else "",
-                    screenshots=details.get("screenshots", "[]") if details else "[]",
+                    screenshots=json.dumps(screenshot_list),
                     review_summary=details.get("review_summary", "{}") if details else "{}",
                     user_reviews=_fetch_user_reviews(appid) if details else "[]",
                     reviews_synced_at=datetime.now(timezone.utc) if details else None,
@@ -305,24 +381,30 @@ def sync_steam_data():
             else:
                 game = db.query(Game).filter(Game.steam_app_id == appid).first()
                 if game:
-                    if os.path.exists(_local_image_path(appid)):
-                        game.image_url = local_img
-                    elif game.image_url and not game.image_url.startswith("/static"):
-                        pass  # 保留已有 CDN 图片
+                    from image_processor import header_urls
+                    h_urls = header_urls(appid, "webp")
+                    if h_urls["small"]:
+                        game.image_url = h_urls["small"]
+                        game.image_large = h_urls["large"]
+                        game.fallback_image = h_urls["fallback"]
+                    elif game.fallback_image:
+                        pass  # 保留已有 CDN fallback
                     else:
                         # 尝试重新下载头图
-                        if _download_image(appid, item.get("header_image")):
-                            game.image_url = local_img
-                        else:
-                            game.image_url = cdn_img
+                        s, l, f = _download_and_process_header(appid, item.get("header_image"))
+                        game.image_url = s
+                        game.image_large = l
+                        game.fallback_image = f
                     game.updated_at = datetime.now(timezone.utc)
 
                     # 修复空截图：仅在截图缺失时拉取详情
                     if not game.screenshots or game.screenshots == "[]":
                         try:
                             d = _try_fetch_details(game.steam_app_id)
-                            if d and d.get("screenshots") and d["screenshots"] != "[]":
-                                game.screenshots = d["screenshots"]
+                            if d and d.get("steam_screenshot_urls"):
+                                ss = _download_and_process_screenshots(game.steam_app_id, d["steam_screenshot_urls"])
+                                if ss:
+                                    game.screenshots = json.dumps(ss)
                         except Exception:
                             pass
                 gid = game.id if game else None
@@ -361,15 +443,12 @@ def _try_fetch_details(appid: int) -> dict | None:
         from tag_library import dedup_tags
         tags = dedup_tags(tags)
 
-        screenshots = []
+        # 只收集前 3 张截图原始 URL，不在此处下载
         steam_screenshot_urls = []
-        for s in gd.get("screenshots", [])[:10]:
+        for s in gd.get("screenshots", [])[:3]:
             url = s.get("path_full", "")
             if url:
                 steam_screenshot_urls.append(url)
-
-        # 下载截图到本地
-        screenshots = _download_screenshots(appid, steam_screenshot_urls)
 
         recs = gd.get("recommendations", {})
         review_positive = recs.get("total", 0)
@@ -382,7 +461,7 @@ def _try_fetch_details(appid: int) -> dict | None:
             "description": gd.get("detailed_description", "") or gd.get("short_description", ""),
             "release_date": gd.get("release_date", {}).get("date", ""),
             "tags": tags,
-            "screenshots": json.dumps(screenshots),
+            "steam_screenshot_urls": steam_screenshot_urls,
             "review_summary": review_summary,
         }
     except Exception:
@@ -468,8 +547,11 @@ def catchup_sync():
                 d = _try_fetch_details(game.steam_app_id)
                 if d:
                     if not game.screenshots or game.screenshots == "[]":
-                        game.screenshots = d.get("screenshots", "[]")
-                        img_ok += 1
+                        if d.get("steam_screenshot_urls"):
+                            ss = _download_and_process_screenshots(game.steam_app_id, d["steam_screenshot_urls"])
+                            if ss:
+                                game.screenshots = json.dumps(ss)
+                                img_ok += 1
                     if not game.description:
                         game.description = d.get("description", "")
                     if not game.name_cn:

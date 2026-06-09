@@ -14,7 +14,10 @@
 
       <!-- 搜索框 -->
       <div class="toolbar-search">
-        <span class="search-icon">&#128269;</span>
+        <svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M13.5 13.5L17.5 17.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
         <input
           v-model="searchQuery"
           class="search-input"
@@ -196,7 +199,7 @@ onBeforeUnmount(() => {
   max-width: 360px;
 }
 .search-icon {
-  font-size: 15px; color: var(--text-muted); flex-shrink: 0;
+  width: 18px; height: 18px; color: var(--text-muted); flex-shrink: 0;
   transition: color 0.2s;
 }
 .toolbar-search:focus-within { border-color: var(--neon-magenta); }

@@ -313,7 +313,7 @@ def sync_steam_data():
                     image_url=small_url,
                     image_large=large_url,
                     fallback_image=fallback,
-                    price=item["price"],
+                    price=(details.get("price", "") if details else "") or item["price"],
                     release_date=details.get("release_date", "") if details else "",
                     screenshots=json.dumps(screenshot_list),
                     review_summary=details.get("review_summary", "{}") if details else "{}",
@@ -410,6 +410,17 @@ def _try_fetch_details(appid: int) -> dict | None:
         total_reviews = recs.get("total_reviews", 0) or (review_positive * 100 // 80 if review_positive else 0)
         review_summary = json.dumps({"positive": review_positive, "total": total_reviews})
 
+        # 提取价格（优先人民币）
+        price = ""
+        price_overview = gd.get("price_overview", {})
+        if price_overview:
+            final = price_overview.get("final", 0)
+            currency = price_overview.get("currency", "")
+            if final > 0:
+                price = "免费" if final == 0 else (f"¥{final / 100:.2f}" if currency == "CNY" else f"{currency} {final / 100:.2f}")
+            else:
+                price = "免费" if price_overview.get("discount_percent", 0) >= 0 else ""
+
         return {
             "name": gd.get("name", ""),
             "name_cn": name_cn,
@@ -418,6 +429,7 @@ def _try_fetch_details(appid: int) -> dict | None:
             "tags": tags,
             "steam_screenshot_urls": steam_screenshot_urls,
             "review_summary": review_summary,
+            "price": price,
         }
     except Exception:
         return None

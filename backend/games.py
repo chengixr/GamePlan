@@ -99,6 +99,14 @@ def recommended(
     for gid in paged_ids:
         game = db.query(Game).options(joinedload(Game.tags)).filter(Game.id == gid).first()
         if game:
+            # 写入推荐历史（已存在则忽略，避免重复降权）
+            from database import RecommendationHistory
+            existing = db.query(RecommendationHistory).filter(
+                RecommendationHistory.user_id == current_user.id,
+                RecommendationHistory.game_id == gid,
+            ).first()
+            if not existing:
+                db.add(RecommendationHistory(user_id=current_user.id, game_id=gid))
             items.append(GameResponse(
                 id=game.id,
                 steam_app_id=game.steam_app_id,
@@ -111,6 +119,7 @@ def recommended(
                 price=game.price or "",
                 tags=[t.name for t in game.tags],
             ))
+    db.commit()
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
 @router.get("/top-sellers/history")

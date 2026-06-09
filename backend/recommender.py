@@ -3,7 +3,7 @@ import json
 import random
 import threading
 from sqlalchemy.orm import Session, joinedload
-from database import Rating, Game, DailyTopSeller
+from database import Rating, Game, DailyTopSeller, Favorite, RecommendationHistory
 from tag_library import get_tag_weight
 
 # game-tag 映射缓存（5 分钟 TTL）
@@ -55,17 +55,46 @@ def clear_recommender_cache():
         _ratings_cache.clear()
 
 
+def _excluded_ids(db: Session, user_id: int) -> tuple[set[int], set[int]]:
+    """返回 (已评分, 已收藏) 的游戏 ID 集合"""
+    rated = {r[0] for r in db.query(Rating.game_id).filter(Rating.user_id == user_id).all()}
+    faved = {f[0] for f in db.query(Favorite.game_id).filter(Favorite.user_id == user_id).all()}
+    return rated, faved
+
+
+def _get_rec_history(db: Session, user_id: int) -> set[int]:
+    """返回已被推荐过的游戏 ID 集合"""
+    rows = db.query(RecommendationHistory.game_id).filter(
+        RecommendationHistory.user_id == user_id
+    ).all()
+    return {r[0] for r in rows}
+
+
+def _freshness_boost(db: Session) -> dict[int, float]:
+    """新入库游戏（7 天内）获得小幅加成，越新加成越高"""
+    cutoff = datetime.now() - timedelta(days=7)
+    recent = db.query(Game.id, Game.created_at).filter(Game.created_at >= cutoff).all()
+    boost = {}
+    for gid, created in recent:
+        days_old = max(1, (datetime.now() - created).days)
+        boost[gid] = 0.12 * (7 - days_old) / 7  # 当天 0.12，7 天衰减到 0
+    return boost
+
+
 def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
-    rating_count = db.query(Rating).filter(Rating.user_id == user_id).count()
+    rated_ids, faved_ids = _excluded_ids(db, user_id)
+    exclude_ids = rated_ids | faved_ids
+    rating_count = len(rated_ids)
+    rec_history = _get_rec_history(db, user_id)
 
     # 推荐结果缓存（5 分钟）：避免同步期间重复计算超时
-    cache_key = f"rec_{user_id}_{rating_count}"
+    cache_key = f"rec_{user_id}_{rating_count}_{len(faved_ids)}"
     with _rec_cache_lock:
         entry = _rec_cache.get(cache_key)
         if entry and entry["expires"] > datetime.now():
             return entry["total"], entry["ids"]
 
-    # 冷启动：用 user_id + 日期做种子，保证同日同用户分页稳定
+    # 冷启动：过滤已评分 + 已收藏，加入随机（不以日期为种子，每次不同）
     if rating_count < 5:
         today = date.today()
         sellers = (
@@ -75,16 +104,19 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
             .limit(100)
             .all()
         )
-        game_ids = [s.game_id for s in sellers]
-        rng = random.Random(f"{user_id}-{today.isoformat()}")
-        rng.shuffle(game_ids)
-        game_ids = game_ids[:20]
+        game_ids = [s.game_id for s in sellers if s.game_id not in exclude_ids]
+        random.shuffle(game_ids)
+        # 历史推荐过且不足 20 款时保留，否则优先未推荐的
+        unseen = [gid for gid in game_ids if gid not in rec_history]
+        seen = [gid for gid in game_ids if gid in rec_history]
+        game_ids = (unseen + seen)[:20]
         result = (len(game_ids), game_ids)
         with _rec_cache_lock:
             _rec_cache[cache_key] = {"total": result[0], "ids": result[1], "expires": datetime.now() + timedelta(minutes=5)}
         return result
 
     game_tag_sets = _get_game_tag_sets(db)
+    freshness = _freshness_boost(db)
 
     # 评分数据缓存读取（存储原始元组避免 DetachedInstanceError）
     now = datetime.now()
@@ -114,7 +146,6 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
         from database import GameEmbedding
         from llm import embedding_available
         if embedding_available():
-            # 加载所有 embedding
             for ge in db.query(GameEmbedding).all():
                 try:
                     embeddings[ge.game_id] = json.loads(ge.embedding)
@@ -125,7 +156,6 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
     except: pass
 
     if embedding_mode:
-        # 用户画像向量 = 高分游戏向量的加权平均
         profile_vec = None
         total_weight = 0
         for gid in high_rated:
@@ -140,9 +170,8 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
 
         if profile_vec and total_weight > 0:
             profile_vec = [v / total_weight for v in profile_vec]
-            # 用 embedding 相似度替换标签相似度
             for gid in game_tag_sets:
-                if gid in rated_game_ids or gid not in embeddings:
+                if gid in exclude_ids or gid not in embeddings:
                     continue
                 tag_scores[gid] = _cosine_similarity_list(profile_vec, embeddings[gid])
 
@@ -161,7 +190,7 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
     tag_scores = {}
     dislike_penalties = {}
     for gid, g_tags in game_tag_sets.items():
-        if gid in rated_game_ids:
+        if gid in exclude_ids:
             continue
         tag_scores[gid] = _weighted_jaccard(high_rated_tags, g_tags) if high_rated_tags else 0.0
         dislike_penalties[gid] = _weighted_jaccard(low_rated_tags, g_tags) if low_rated_tags else 0.0
@@ -185,7 +214,7 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
         cf_accum = {}
         for ouid, sim in top_similar:
             for gid, score in user_scores[ouid].items():
-                if score >= 4 and gid not in rated_game_ids:
+                if score >= 4 and gid not in exclude_ids:
                     cf_accum.setdefault(gid, []).append(sim)
         for gid, sims in cf_accum.items():
             cf_scores[gid] = sum(sims) / len(sims) if sims else 0.0
@@ -197,22 +226,38 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
         try:
             rd = json.loads(summary or "{}")
             total = rd.get("total", 0)
-            if total >= 50:  # 至少 50 条评价才计入
+            if total >= 50:
                 review_boost[gid] = (rd.get("positive", 0) / total) * 0.15
         except:
             pass
 
-    # === 混合打分（含不喜欢降权 + Steam 评价加成） ===
+    # === 混合打分 ===
     DISLIKE_PENALTY_WEIGHT = 0.3
+    REC_HISTORY_PENALTY = 0.5  # 已推荐过 ×0.5
+    FRESHNESS_WEIGHT = 1.0     # 新鲜度加成权重
+    NOISE_SCALE = 0.03          # 随机扰动幅度
+
+    rng = random.Random()
     final_scores = {}
     for gid in set(list(tag_scores.keys()) + list(cf_scores.keys())):
         score = tag_scores.get(gid, 0) * 0.6 + cf_scores.get(gid, 0) * 0.4
         penalty = dislike_penalties.get(gid, 0) * DISLIKE_PENALTY_WEIGHT
-        final_scores[gid] = max(0, score - penalty + review_boost.get(gid, 0))
+        score = max(0, score - penalty + review_boost.get(gid, 0))
 
-    # === 去除已打分 ===
+        # 新鲜度加成
+        score += freshness.get(gid, 0) * FRESHNESS_WEIGHT
+
+        # 已推荐降权
+        if gid in rec_history:
+            score *= REC_HISTORY_PENALTY
+
+        # 随机扰动（±3%），打破确定性排序
+        score *= 1.0 + rng.uniform(-NOISE_SCALE, NOISE_SCALE)
+
+        final_scores[gid] = max(0, score)
+
     sorted_games = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
-    game_ids = [gid for gid, _ in sorted_games if gid not in rated_game_ids]
+    game_ids = [gid for gid, _ in sorted_games]
 
     # 保存到缓存
     result = (len(game_ids), game_ids)

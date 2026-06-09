@@ -266,7 +266,8 @@ def sync_from_steamcharts() -> list[dict]:
 # ==================== 统一同步入口 ====================
 
 def sync_steam_data():
-    """多源同步：搜索页排序 → API 元数据富化 → SteamCharts 补充，分批获取详情"""
+    """多源同步：搜索页 + API 热销榜为主体，API 发现类（new_releases/specials/coming_soon）扩充游戏库。
+    只有热销来源写入 DailyTopSeller 排名，发现类仅入库不写排名。"""
     db = SessionLocal()
     try:
         logger.info("=== 开始多源同步 ===")
@@ -274,13 +275,15 @@ def sync_steam_data():
         # 收集数据
         api_top, api_discovery = sync_from_api()   # API: 热销元数据 + 发现类游戏
         search_items = sync_from_search()           # 搜索页: 主排名源（filter=topsellers）
-        chart_items = sync_from_steamcharts()        # SteamCharts: 补充
 
         # 构建 API 元数据查找表（热销 + 发现）
         api_lookup = {}
         for item in api_top + api_discovery:
             if item["appid"] not in api_lookup:
                 api_lookup[item["appid"]] = item
+
+        # 热销榜 appid 集合：只有这些写入 DailyTopSeller
+        top_seller_ids = set()
 
         # 以搜索页排序为基准，API 数据富化名称和价格
         merged = {}
@@ -293,27 +296,23 @@ def sync_steam_data():
             else:
                 merged[aid] = item
             ranked_order.append(aid)
+            top_seller_ids.add(aid)
 
         # 追加 API 热销榜中搜索页遗漏的游戏
         for item in api_top:
             if item["appid"] not in merged:
                 merged[item["appid"]] = item
                 ranked_order.append(item["appid"])
+            top_seller_ids.add(item["appid"])
 
-        # 追加 API 发现类游戏（new_releases/specials/coming_soon）
+        # 追加 API 发现类游戏（new_releases/specials/coming_soon）—— 仅入库，不写排名
         for item in api_discovery:
             if item["appid"] not in merged:
                 merged[item["appid"]] = item
                 ranked_order.append(item["appid"])
 
-        # 追加 SteamCharts
-        for item in chart_items:
-            if item["appid"] not in merged:
-                merged[item["appid"]] = item
-                ranked_order.append(item["appid"])
-
         items = [merged[aid] for aid in ranked_order]
-        logger.info(f"合并: 搜索 {len(search_items)} + API热销 {len(api_top)} + 发现 {len(api_discovery)} + Charts {len(chart_items)} → {len(items)} 款")
+        logger.info(f"合并: 搜索 {len(search_items)} + API热销 {len(api_top)} + 发现 {len(api_discovery)} → {len(items)} 款 | 热销 {len(top_seller_ids)} 款")
 
         if not items:
             logger.warning("所有数据源均无返回，跳过同步")
@@ -409,7 +408,7 @@ def sync_steam_data():
                 gid = game.id if game else None
                 updated += 1
 
-            if gid:
+            if gid and appid in top_seller_ids:
                 existing_today = db.query(DailyTopSeller).filter(
                     DailyTopSeller.game_id == gid, DailyTopSeller.date == today
                 ).first()
@@ -510,25 +509,29 @@ def catchup_sync():
         today_entries = db.query(DailyTopSeller).filter(DailyTopSeller.date == today).all()
         today_game_ids = {e.game_id for e in today_entries}
 
-        # 2. 收集所有数据源的游戏（最后一次尝试）
+        # 2. 收集数据源的游戏（热销 + 发现类）
         from_api_top, from_api_disc = sync_from_api()
         from_search = sync_from_search()
-        from_charts = sync_from_steamcharts()
+        # 热销榜 appid 集合：只有这些补录排名
+        top_seller_ids = set()
+        for item in from_search + from_api_top:
+            top_seller_ids.add(item["appid"])
+
         all_ids = set()
         merge = {}
-        for item in from_search + from_api_top + from_api_disc + from_charts:
+        for item in from_search + from_api_top + from_api_disc:
             aid = item["appid"]
             if aid not in all_ids:
                 all_ids.add(aid)
                 merge[aid] = item
-        logger.info(f"追补合并: 搜索 {len(from_search)} + API {len(from_api_top)+len(from_api_disc)} + Charts {len(from_charts)} → {len(merge)} 款")
+        logger.info(f"追补合并: 搜索 {len(from_search)} + API热销 {len(from_api_top)} + 发现 {len(from_api_disc)} → {len(merge)} 款")
 
-        # 3. 补录当天缺失的排名
+        # 3. 补录当天缺失的排名（仅热销来源）
         catchup_rank = 0
         for rank, item in enumerate(merge.values(), 1):
             game = db.query(Game).filter(Game.steam_app_id == item["appid"]).first()
             gid = game.id if game else None
-            if gid and gid not in today_game_ids:
+            if gid and gid not in today_game_ids and item["appid"] in top_seller_ids:
                 db.add(DailyTopSeller(game_id=gid, rank=rank, date=today))
                 catchup_rank += 1
 

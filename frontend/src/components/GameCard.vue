@@ -70,14 +70,28 @@ let imgTimer = null
 
 const imgSrc = computed(() => {
   if (imgRetry.value === 0) return props.game.image_url || ''
-  return props.game.fallback_image || ''
+  if (imgRetry.value === 1) return props.game.fallback_image || ''
+  // 回退到第一张截图
+  const ss = props.game.screenshots || []
+  if (ss.length > 0) {
+    const s = ss[0]
+    return (typeof s === 'string') ? s : (s.thumb || s.large || '')
+  }
+  return ''
 })
 
 function tryNext() {
   clearTimeout(imgTimer)
   if (imgRetry.value === 0 && props.game.fallback_image) {
-    imgRetry.value = 1
-    return
+    imgRetry.value = 1; return
+  }
+  if (imgRetry.value <= 1) {
+    const ss = props.game.screenshots || []
+    if (ss.length > 0) {
+      const s = ss[0]
+      const url = (typeof s === 'string') ? s : (s.thumb || s.large || '')
+      if (url) { imgRetry.value = 2; return }
+    }
   }
   imgFailed.value = true
 }

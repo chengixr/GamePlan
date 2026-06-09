@@ -1,14 +1,12 @@
 <template>
   <div class="rec-view">
     <header class="page-header">
-      <div class="header-row">
-        <div>
-          <h1 class="page-title">
-            <span class="title-icon">&#9670;</span>
-            为你推荐
-          </h1>
-          <p class="page-subtitle">基于你的评分偏好 · 混合推荐算法</p>
-        </div>
+      <h1 class="page-title">
+        <span class="title-icon">&#9670;</span>
+        为你推荐
+      </h1>
+      <div class="subtitle-row">
+        <p class="page-subtitle">基于你的评分偏好 · 混合推荐算法</p>
         <div class="header-search">
           <svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/>
@@ -181,10 +179,12 @@ onBeforeUnmount(() => {
   font-size: 14px;
   color: var(--text-muted);
 }
-.header-row {
-  display: flex; align-items: flex-start; justify-content: space-between;
+.subtitle-row {
+  display: flex; align-items: center; justify-content: space-between;
   gap: 16px;
+  margin-top: 8px;
 }
+.page-subtitle { margin-top: 0; }
 /* 搜索框 */
 .header-search {
   display: flex; align-items: center; gap: 6px;

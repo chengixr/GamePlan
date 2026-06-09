@@ -7,12 +7,7 @@
             <span class="title-icon">&#9670;</span>
             为你推荐
           </h1>
-          <p class="page-subtitle">
-            <template v-if="store.recExplanation.length">
-              因为你喜欢 <span class="explain-game" v-for="(name, i) in store.recExplanation" :key="i">{{ name }}<span v-if="i < store.recExplanation.length - 1">、</span></span>
-            </template>
-            <template v-else>基于你的评分偏好 · 混合推荐算法</template>
-          </p>
+          <p class="page-subtitle">基于你的评分偏好 · 混合推荐算法</p>
         </div>
         <div class="header-search">
           <svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -186,11 +181,6 @@ onBeforeUnmount(() => {
   font-size: 14px;
   color: var(--text-muted);
 }
-.explain-game {
-  color: var(--neon-amber);
-  font-weight: 500;
-}
-
 .header-row {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 16px;

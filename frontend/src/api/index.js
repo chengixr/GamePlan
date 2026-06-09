@@ -45,7 +45,7 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),
   gameDetail: (id) => request('/games/' + id),
-  getTags: () => request('/games/tags'),
+  getTags: (limit = 10) => request(`/games/tags?limit=${limit}`),
   search: (q, page = 1, pageSize = 20) => request(`/games/search?q=${encodeURIComponent(q)}&page=${page}&page_size=${pageSize}`),
   topSellers: (page = 1, pageSize = 20) => request(`/games/top-sellers?page=${page}&page_size=${pageSize}`),
   dismissGame: (gameId) => request(`/games/${gameId}/dismiss`, { method: 'POST' }),

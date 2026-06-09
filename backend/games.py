@@ -40,9 +40,22 @@ def clear_hot_cache():
         _cache.clear()
 
 @router.get("/tags")
-def list_tags(db: Session = Depends(get_db)):
-    tags = db.query(Tag).all()
-    return [{"id": t.id, "name": t.name} for t in tags]
+def list_tags(
+    limit: int = Query(10, ge=1, le=50, description="返回数量"),
+    db: Session = Depends(get_db),
+):
+    """返回热门标签（按关联游戏数降序）"""
+    from database import game_tag_assoc as gta
+    from sqlalchemy import desc
+    tags = (
+        db.query(Tag, func.count(gta.c.game_id).label("cnt"))
+        .outerjoin(gta, Tag.id == gta.c.tag_id)
+        .group_by(Tag.id)
+        .order_by(desc("cnt"))
+        .limit(limit)
+        .all()
+    )
+    return [{"id": t.id, "name": t.name, "count": cnt} for t, cnt in tags]
 
 
 @router.get("/search", response_model=PaginatedResponse)

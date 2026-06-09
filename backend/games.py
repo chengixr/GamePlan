@@ -12,6 +12,24 @@ from recommender import get_recommendations
 
 router = APIRouter()
 
+# HTML 净化：移除危险标签和事件处理器（深度防御，Steam 描述为可信来源）
+_DANGEROUS_RE = re.compile(
+    r'<script[\s>]|</script>|<iframe[\s>]|</iframe>',
+    re.IGNORECASE,
+)
+_EVENT_ATTR_RE = re.compile(r'\s+on\w+\s*=\s*"[^"]*"', re.IGNORECASE)
+_JAVASCRIPT_URL_RE = re.compile(r'href\s*=\s*"javascript:', re.IGNORECASE)
+
+
+def _sanitize_html(text: str) -> str:
+    if not text:
+        return text
+    text = _DANGEROUS_RE.sub('', text)
+    text = _EVENT_ATTR_RE.sub('', text)
+    text = _JAVASCRIPT_URL_RE.sub('href="#"', text)
+    return text
+
+
 # 热销榜缓存（5 分钟 TTL）
 _cache = {}
 _cache_lock = threading.Lock()
@@ -71,7 +89,7 @@ def top_sellers(
                     all_items.append(GameResponse(
                         id=game.id, steam_app_id=game.steam_app_id,
                         name=game.name, name_cn=game.name_cn or "",
-                        description=game.description or "",
+                        description=_sanitize_html(game.description or ""),
                         image_url=game.image_url or "",
                         image_large=game.image_large or game.image_url or "",
                         fallback_image=game.fallback_image or "",
@@ -112,7 +130,7 @@ def recommended(
                 steam_app_id=game.steam_app_id,
                 name=game.name,
                 name_cn=game.name_cn or "",
-                description=game.description or "",
+                description=_sanitize_html(game.description or ""),
                 image_url=game.image_url or "",
                 image_large=game.image_large or game.image_url or "",
                 fallback_image=game.fallback_image or "",
@@ -153,7 +171,7 @@ def top_sellers_history(
                 steam_app_id=game.steam_app_id,
                 name=game.name,
                 name_cn=game.name_cn or "",
-                description=game.description or "",
+                description=_sanitize_html(game.description or ""),
                 image_url=game.image_url or "",
                 image_large=game.image_large or game.image_url or "",
                 fallback_image=game.fallback_image or "",
@@ -221,7 +239,7 @@ def game_detail(game_id: int, db: Session = Depends(get_db)):
             if sg:
                 similar.append(GameResponse(
                     id=sg.id, steam_app_id=sg.steam_app_id, name=sg.name,
-                    name_cn=sg.name_cn or "", description=sg.description or "",
+                    name_cn=sg.name_cn or "", description=_sanitize_html(sg.description or ""),
                     image_url=sg.image_url or "",
                     image_large=sg.image_large or sg.image_url or "",
                     fallback_image=sg.fallback_image or "",
@@ -233,7 +251,7 @@ def game_detail(game_id: int, db: Session = Depends(get_db)):
     return {
         "id": game.id, "steam_app_id": game.steam_app_id,
         "name": game.name, "name_cn": game.name_cn or "",
-        "description": game.description or "",
+        "description": _sanitize_html(game.description or ""),
         "image_url": game.image_url or "",
         "image_large": game.image_large or game.image_url or "",
         "fallback_image": game.fallback_image or "",

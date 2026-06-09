@@ -10,6 +10,25 @@ import logging
 logger = logging.getLogger("auth")
 router = APIRouter()
 
+# 登录频率限制：每个 IP 5 分钟内最多 10 次失败
+_login_attempts: dict[str, list[float]] = {}
+MAX_FAILURES = 10
+FAILURE_WINDOW = 300  # 5 分钟
+
+
+def _check_rate_limit(client_ip: str) -> bool:
+    """检查 IP 是否超出频率限制，返回 True 表示被限制"""
+    now = datetime.now().timestamp()
+    attempts = [t for t in _login_attempts.get(client_ip, []) if now - t < FAILURE_WINDOW]
+    _login_attempts[client_ip] = attempts
+    return len(attempts) >= MAX_FAILURES
+
+
+def _record_failure(client_ip: str):
+    now = datetime.now().timestamp()
+    _login_attempts.setdefault(client_ip, []).append(now)
+
+
 def get_db():
     db = SessionLocal()
     try: yield db
@@ -69,9 +88,14 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
     return _user_response(user)
 
 @router.post("/login", response_model=UserResponse)
-def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    client_ip = request.client.host if request.client else "unknown"
+    if _check_rate_limit(client_ip):
+        logger.warning(f"登录限流: IP {client_ip} 超过失败次数限制")
+        raise HTTPException(status_code=429, detail="登录尝试过于频繁，请 5 分钟后再试")
     user = db.query(User).filter(User.username == body.username).first()
     if not user or not bcrypt.verify(body.password, user.password_hash):
+        _record_failure(client_ip)
         logger.warning(f"登录失败: 用户 {body.username} 密码错误或不存在")
         raise HTTPException(status_code=401, detail="账号或密码不正确")
     db.query(UserSession).filter(UserSession.user_id == user.id).delete()

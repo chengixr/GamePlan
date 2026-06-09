@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from database import SessionLocal, User, Rating, Game, DailyTopSeller, UserSession
+from database import SessionLocal, User, Rating, Game, DailyTopSeller, UserSession, Favorite, RecommendationHistory
 from models import AdminUserResponse, AdminSyncStatusResponse, AdminLogResponse, AdminSchedulerJobResponse
 from auth import require_admin, get_db
 import steam_sync
@@ -86,6 +86,8 @@ def delete_user(
     # 删除关联数据
     db.query(Rating).filter(Rating.user_id == user_id).delete()
     db.query(UserSession).filter(UserSession.user_id == user_id).delete()
+    db.query(Favorite).filter(Favorite.user_id == user_id).delete()
+    db.query(RecommendationHistory).filter(RecommendationHistory.user_id == user_id).delete()
     db.delete(user)
     db.commit()
     return {"status": "ok"}

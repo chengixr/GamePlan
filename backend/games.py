@@ -83,6 +83,7 @@ def search_games(
             fallback_image=game.fallback_image or "",
             price=game.price or "",
             tags=[t.name for t in game.tags],
+                screenshots=json.loads(game.screenshots or "[]"),
         ))
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
@@ -137,6 +138,7 @@ def top_sellers(
                         fallback_image=game.fallback_image or "",
                         price=game.price or "",
                         tags=[t.name for t in game.tags],
+                screenshots=json.loads(game.screenshots or "[]"),
                     ))
             _cache[cache_key] = {"data": (all_items, total), "expires": datetime.now() + timedelta(minutes=5)}
 
@@ -178,6 +180,7 @@ def recommended(
                 fallback_image=game.fallback_image or "",
                 price=game.price or "",
                 tags=[t.name for t in game.tags],
+                screenshots=json.loads(game.screenshots or "[]"),
             ))
     db.commit()
 
@@ -252,6 +255,7 @@ def top_sellers_history(
                 fallback_image=game.fallback_image or "",
                 price=game.price or "",
                 tags=[t.name for t in game.tags],
+                screenshots=json.loads(game.screenshots or "[]"),
             ))
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 

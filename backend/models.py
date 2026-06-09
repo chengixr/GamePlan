@@ -34,6 +34,7 @@ class GameResponse(BaseModel):
     fallback_image: str = ""
     price: str
     tags: list[str] = []
+    screenshots: list = []
 
 class RatingRequest(BaseModel):
     game_id: int

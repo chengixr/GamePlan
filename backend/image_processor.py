@@ -16,13 +16,13 @@ os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 # 尺寸规格: (宽度,)
 HEADER_SIZES = {"small": 400, "large": 920}
 SCREENSHOT_SIZES = {"thumb": 216, "large": 1200}
-FORMATS = {"webp": ("WEBP", 80), "jpg": ("JPEG", 82)}
+FORMATS = {"webp": ("WEBP", 80)}
 
 CDN_FALLBACK_TEMPLATE = f"{STEAM_IMG_CDN}/{{appid}}/header.jpg"
 
 
 def _resize_and_save(img: Image.Image, path_no_ext: str, max_width: int) -> dict:
-    """按宽度等比缩放并保存 WebP + JPEG。返回 {fmt: url_path}"""
+    """按宽度等比缩放并保存 WebP。返回 {fmt: url_path}"""
     w, h = img.size
     if w > max_width:
         ratio = max_width / w
@@ -30,15 +30,10 @@ def _resize_and_save(img: Image.Image, path_no_ext: str, max_width: int) -> dict
         img = img.resize(new_size, Image.LANCZOS)
 
     results = {}
-    mode_rgb = img.mode
     for fmt, (pil_fmt, quality) in FORMATS.items():
         out_path = f"{path_no_ext}_{max_width}w.{fmt}"
         save_kwargs = {"quality": quality, "optimize": True}
-        save_img = img
-        if pil_fmt == "JPEG" and save_img.mode in ("RGBA", "P"):
-            save_img = img.convert("RGB")
-        save_img.save(out_path, pil_fmt, **save_kwargs)
-        # 转换为 /static/... 相对路径
+        img.save(out_path, pil_fmt, **save_kwargs)
         rel = os.path.relpath(out_path, os.path.join(BASE_DIR, "static"))
         results[fmt] = f"/static/{rel}"
     return results
@@ -46,7 +41,7 @@ def _resize_and_save(img: Image.Image, path_no_ext: str, max_width: int) -> dict
 
 def process_header(appid: int, source_path: str) -> dict:
     """
-    处理头图，生成 small(400w) + large(920w)，各输出 WebP + JPEG。
+    处理头图，生成 small(400w) + large(920w)，输出 WebP。
     返回: {"small": {"webp": "/static/...", "jpg": "..."}, "large": {...}}
     失败返回 {}。
     """
@@ -88,15 +83,9 @@ def process_screenshot(appid: int, idx: int, source_path: str) -> dict:
         return {}
 
 
-def supports_webp(request_headers: dict) -> bool:
-    """根据请求 Accept 头判断客户端是否支持 WebP"""
-    accept = request_headers.get("accept", "")
-    return "image/webp" in accept
-
-
-def get_best_format(request_headers: dict) -> str:
-    """返回最优图片格式扩展名: 'webp' 或 'jpg'"""
-    return "webp" if supports_webp(request_headers) else "jpg"
+def get_best_format(request_headers: dict = None) -> str:
+    """返回图片格式扩展名，统一使用 webp"""
+    return "webp"
 
 
 def header_urls(appid: int, fmt: str) -> dict:

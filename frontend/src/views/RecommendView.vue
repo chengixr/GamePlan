@@ -13,11 +13,15 @@
       </p>
 
       <!-- 搜索框 -->
-      <div class="search-bar">
-        <form @submit.prevent="onSearch">
-          <input v-model="searchQuery" class="search-input" placeholder="搜索游戏..." />
-        </form>
-        <button v-if="searchMode" class="clear-search" @click="clearSearch">&#10005; 清除</button>
+      <div class="toolbar-search">
+        <span class="search-icon">&#128269;</span>
+        <input
+          v-model="searchQuery"
+          class="search-input"
+          placeholder="搜索游戏名称..."
+          @keyup.enter="onSearch"
+        />
+        <button v-if="searchQuery" class="search-clear" @click="clearSearch">&#10005;</button>
       </div>
     </header>
 
@@ -183,23 +187,33 @@ onBeforeUnmount(() => {
 }
 
 /* 搜索框 */
-.search-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.toolbar-search {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 16px; padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  max-width: 360px;
+}
+.search-icon {
+  font-size: 15px; color: var(--text-muted); flex-shrink: 0;
+  transition: color 0.2s;
+}
+.toolbar-search:focus-within { border-color: var(--neon-magenta); }
+.toolbar-search:focus-within .search-icon { color: var(--neon-magenta); }
 .search-input {
-  width: 220px; padding: 6px 12px;
-  font-size: 13px; font-family: var(--font-body);
+  flex: 1; padding: 0; border: none; outline: none;
+  font-size: 14px; font-family: var(--font-body);
   color: var(--text-primary);
-  background: var(--surface-raised);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 4px; outline: none;
-  transition: border-color 0.2s;
+  background: transparent;
 }
-.search-input:focus { border-color: var(--neon-magenta); }
 .search-input::placeholder { color: var(--text-muted); }
-.clear-search {
+.search-clear {
   background: none; border: none; color: var(--text-muted);
-  font-size: 12px; cursor: pointer; padding: 4px 8px;
+  font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1;
+  flex-shrink: 0;
 }
-.clear-search:hover { color: var(--neon-magenta); }
+.search-clear:hover { color: var(--neon-magenta); }
 .search-info { margin-top: 12px; font-size: 14px; color: var(--text-secondary); }
 
 /* 推荐项 + 不感兴趣 */

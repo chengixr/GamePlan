@@ -11,28 +11,32 @@
           历史榜单
         </button>
       </div>
-      <p class="page-subtitle" v-if="!isHistoryMode">实时同步 · 每日更新 · 为你发现好游戏</p>
-
-      <!-- 搜索框 -->
-      <div class="search-bar" v-if="!isHistoryMode">
-        <form @submit.prevent="onSearch">
-          <input v-model="searchQuery" class="search-input" placeholder="搜索游戏..." />
-        </form>
-        <button v-if="searchMode" class="clear-search" @click="clearSearch">&#10005; 清除搜索</button>
+      <!-- 工具栏：搜索 + 标签筛选 -->
+      <div class="toolbar" v-if="!isHistoryMode">
+        <div class="toolbar-search">
+          <span class="search-icon">&#128269;</span>
+          <input
+            v-model="searchQuery"
+            class="search-input"
+            placeholder="搜索游戏名称..."
+            @keyup.enter="onSearch"
+          />
+          <button v-if="searchQuery" class="search-clear" @click="clearSearch">&#10005;</button>
+        </div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-tags">
+          <button
+            class="tag-chip" :class="{ active: activeTag === '' }"
+            @click="activeTag = ''"
+          >全部</button>
+          <button
+            v-for="t in tags" :key="t.id"
+            class="tag-chip" :class="{ active: activeTag === t.name }"
+            @click="activeTag = t.name"
+          >{{ t.name }}</button>
+        </div>
       </div>
-
-      <!-- 标签筛选 -->
-      <div class="tag-filters" v-if="!isHistoryMode && tags.length > 0">
-        <button
-          class="tag-chip" :class="{ active: activeTag === '' }"
-          @click="activeTag = ''"
-        >全部</button>
-        <button
-          v-for="t in tags" :key="t.id"
-          class="tag-chip" :class="{ active: activeTag === t.name }"
-          @click="activeTag = t.name"
-        >{{ t.name }}</button>
-      </div>
+      <p v-if="searchMode" class="search-result-hint">搜索 "{{ searchQuery }}" 共 {{ searchTotal }} 款结果</p>
     </header>
 
     <!-- 游戏列表 -->
@@ -324,42 +328,69 @@ onBeforeUnmount(() => {
   letter-spacing: 0.5px;
 }
 
-/* 搜索框 */
-.search-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-.search-input {
-  width: 220px; padding: 6px 12px;
-  font-size: 13px; font-family: var(--font-body);
-  color: var(--text-primary);
-  background: var(--surface-raised);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 4px; outline: none;
-  transition: border-color 0.2s;
-}
-.search-input:focus { border-color: var(--neon-cyan); }
-.search-input::placeholder { color: var(--text-muted); }
-.clear-search {
-  background: none; border: none; color: var(--text-muted);
-  font-size: 12px; cursor: pointer; padding: 4px 8px;
-}
-.clear-search:hover { color: var(--neon-magenta); }
-
-/* 标签筛选 */
-.tag-filters {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  margin-top: 14px;
-}
-.tag-chip {
-  padding: 4px 12px; font-size: 12px; font-weight: 500;
-  background: var(--surface-raised);
+/* 工具栏：搜索 + 标签 */
+.toolbar {
+  display: flex; align-items: stretch; gap: 0;
+  margin-top: 16px;
+  background: var(--surface);
   border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 4px; color: var(--text-muted);
-  cursor: pointer; transition: all 0.15s;
-  font-family: var(--font-body);
+  border-radius: 10px;
+  overflow: hidden;
 }
-.tag-chip:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.15); }
+.toolbar-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  background: var(--surface-raised);
+  min-width: 0;
+}
+.search-icon {
+  font-size: 15px; color: var(--text-muted); flex-shrink: 0;
+  transition: color 0.2s;
+}
+.toolbar-search:focus-within .search-icon { color: var(--neon-cyan); }
+.search-input {
+  width: 200px; padding: 0; border: none; outline: none;
+  font-size: 14px; font-family: var(--font-body);
+  color: var(--text-primary);
+  background: transparent;
+}
+.search-input::placeholder { color: var(--text-muted); }
+.search-clear {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1;
+  flex-shrink: 0;
+}
+.search-clear:hover { color: var(--neon-magenta); }
+
+.toolbar-divider {
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(255,255,255,0.08), transparent);
+}
+
+.toolbar-tags {
+  flex: 1; display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px; overflow-x: auto;
+  scrollbar-width: none;
+}
+.toolbar-tags::-webkit-scrollbar { display: none; }
+
+.tag-chip {
+  padding: 5px 14px; font-size: 13px; font-weight: 500;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 20px; color: var(--text-muted);
+  cursor: pointer; transition: all 0.2s;
+  font-family: var(--font-body);
+  white-space: nowrap; flex-shrink: 0;
+}
+.tag-chip:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.03); }
 .tag-chip.active {
   color: var(--void); background: var(--neon-cyan);
   border-color: var(--neon-cyan); font-weight: 600;
+  box-shadow: 0 0 12px rgba(0,229,255,0.2);
+}
+.search-result-hint {
+  margin-top: 10px; font-size: 13px; color: var(--text-muted);
 }
 
 /* 历史记录按钮 */

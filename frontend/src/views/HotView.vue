@@ -6,40 +6,39 @@
           <span class="title-icon">&#9654;</span>
           {{ isHistoryMode ? `${historyDate} 热销榜` : 'Steam 今日热销榜' }}
         </h1>
-        <button class="btn-history" @click="toggleSidebar">
-          <span class="btn-icon">&#9783;</span>
-          历史榜单
-        </button>
-      </div>
-      <!-- 工具栏：搜索 + 标签筛选 -->
-      <div class="toolbar" v-if="!isHistoryMode">
-        <div class="toolbar-search">
-          <svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/>
-            <path d="M13.5 13.5L17.5 17.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
-          <input
-            v-model="searchQuery"
-            class="search-input"
-            placeholder="搜索游戏名称..."
-            @keyup.enter="onSearch"
-          />
-          <button v-if="searchQuery" class="search-clear" @click="clearSearch">&#10005;</button>
-        </div>
-        <div class="toolbar-divider"></div>
-        <div class="toolbar-tags">
-          <button
-            class="tag-chip" :class="{ active: activeTag === '' }"
-            @click="activeTag = ''"
-          >全部</button>
-          <button
-            v-for="t in tags" :key="t.id"
-            class="tag-chip" :class="{ active: activeTag === t.name }"
-            @click="activeTag = t.name"
-          >{{ t.name }}</button>
+        <div class="header-right">
+          <div class="header-search" v-if="!isHistoryMode">
+            <svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/>
+              <path d="M13.5 13.5L17.5 17.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <input
+              v-model="searchQuery"
+              class="search-input"
+              placeholder="搜索游戏..."
+              @keyup.enter="onSearch"
+            />
+            <button v-if="searchQuery" class="search-clear" @click="clearSearch">&#10005;</button>
+          </div>
+          <button class="btn-history" @click="toggleSidebar">
+            <span class="btn-icon">&#9783;</span>
+            历史榜单
+          </button>
         </div>
       </div>
       <p v-if="searchMode" class="search-result-hint">搜索 "{{ searchQuery }}" 共 {{ searchTotal }} 款结果</p>
+      <!-- 标签筛选 -->
+      <div class="tag-filters" v-if="!isHistoryMode && tags.length > 0">
+        <button
+          class="tag-chip" :class="{ active: activeTag === '' }"
+          @click="activeTag = ''"
+        >全部</button>
+        <button
+          v-for="t in tags" :key="t.id"
+          class="tag-chip" :class="{ active: activeTag === t.name }"
+          @click="activeTag = t.name"
+        >{{ t.name }}</button>
+      </div>
     </header>
 
     <!-- 游戏列表 -->
@@ -331,60 +330,50 @@ onBeforeUnmount(() => {
   letter-spacing: 0.5px;
 }
 
-/* 工具栏：搜索 + 标签 */
-.toolbar {
-  display: flex; align-items: stretch; gap: 0;
-  margin-top: 16px;
+/* 头部右侧：搜索 + 历史按钮 */
+.header-right {
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+.header-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
   background: var(--surface);
   border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 10px;
-  overflow: hidden;
+  border-radius: 8px;
+  transition: border-color 0.2s;
 }
-.toolbar-search {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 16px;
-  background: var(--surface-raised);
-  min-width: 0;
-}
+.header-search:focus-within { border-color: var(--neon-cyan); }
 .search-icon {
-  width: 18px; height: 18px; color: var(--text-muted); flex-shrink: 0;
+  width: 16px; height: 16px; color: var(--text-muted); flex-shrink: 0;
   transition: color 0.2s;
 }
-.toolbar-search:focus-within .search-icon { color: var(--neon-cyan); }
+.header-search:focus-within .search-icon { color: var(--neon-cyan); }
 .search-input {
-  width: 200px; padding: 0; border: none; outline: none;
-  font-size: 14px; font-family: var(--font-body);
+  width: 160px; padding: 0; border: none; outline: none;
+  font-size: 13px; font-family: var(--font-body);
   color: var(--text-primary);
   background: transparent;
 }
 .search-input::placeholder { color: var(--text-muted); }
 .search-clear {
   background: none; border: none; color: var(--text-muted);
-  font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1;
-  flex-shrink: 0;
+  font-size: 14px; cursor: pointer; padding: 0;
 }
 .search-clear:hover { color: var(--neon-magenta); }
 
-.toolbar-divider {
-  width: 1px;
-  background: linear-gradient(180deg, transparent, rgba(255,255,255,0.08), transparent);
+/* 标签筛选 */
+.tag-filters {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 14px;
 }
-
-.toolbar-tags {
-  flex: 1; display: flex; align-items: center; gap: 6px;
-  padding: 6px 14px; overflow-x: auto;
-  scrollbar-width: none;
-}
-.toolbar-tags::-webkit-scrollbar { display: none; }
-
 .tag-chip {
   padding: 5px 14px; font-size: 13px; font-weight: 500;
-  background: transparent;
+  background: var(--surface);
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 20px; color: var(--text-muted);
   cursor: pointer; transition: all 0.2s;
   font-family: var(--font-body);
-  white-space: nowrap; flex-shrink: 0;
+  white-space: nowrap;
 }
 .tag-chip:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.03); }
 .tag-chip.active {

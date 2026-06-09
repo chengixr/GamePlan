@@ -1,30 +1,32 @@
 <template>
   <div class="rec-view">
     <header class="page-header">
-      <h1 class="page-title">
-        <span class="title-icon">&#9670;</span>
-        为你推荐
-      </h1>
-      <p class="page-subtitle">
-        <template v-if="store.recExplanation.length">
-          因为你喜欢 <span class="explain-game" v-for="(name, i) in store.recExplanation" :key="i">{{ name }}<span v-if="i < store.recExplanation.length - 1">、</span></span>
-        </template>
-        <template v-else>基于你的评分偏好 · 混合推荐算法</template>
-      </p>
-
-      <!-- 搜索框 -->
-      <div class="toolbar-search">
-        <svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/>
-          <path d="M13.5 13.5L17.5 17.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-        </svg>
-        <input
-          v-model="searchQuery"
-          class="search-input"
-          placeholder="搜索游戏名称..."
-          @keyup.enter="onSearch"
-        />
-        <button v-if="searchQuery" class="search-clear" @click="clearSearch">&#10005;</button>
+      <div class="header-row">
+        <div>
+          <h1 class="page-title">
+            <span class="title-icon">&#9670;</span>
+            为你推荐
+          </h1>
+          <p class="page-subtitle">
+            <template v-if="store.recExplanation.length">
+              因为你喜欢 <span class="explain-game" v-for="(name, i) in store.recExplanation" :key="i">{{ name }}<span v-if="i < store.recExplanation.length - 1">、</span></span>
+            </template>
+            <template v-else>基于你的评分偏好 · 混合推荐算法</template>
+          </p>
+        </div>
+        <div class="header-search">
+          <svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M13.5 13.5L17.5 17.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <input
+            v-model="searchQuery"
+            class="search-input"
+            placeholder="搜索游戏..."
+            @keyup.enter="onSearch"
+          />
+          <button v-if="searchQuery" class="search-clear" @click="clearSearch">&#10005;</button>
+        </div>
       </div>
     </header>
 
@@ -189,32 +191,35 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 
+.header-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px;
+}
 /* 搜索框 */
-.toolbar-search {
-  display: flex; align-items: center; gap: 10px;
-  margin-top: 16px; padding: 10px 16px;
+.header-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; flex-shrink: 0;
   background: var(--surface);
   border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 10px;
-  max-width: 360px;
+  border-radius: 8px;
+  transition: border-color 0.2s;
 }
+.header-search:focus-within { border-color: var(--neon-magenta); }
 .search-icon {
-  width: 18px; height: 18px; color: var(--text-muted); flex-shrink: 0;
+  width: 16px; height: 16px; color: var(--text-muted); flex-shrink: 0;
   transition: color 0.2s;
 }
-.toolbar-search:focus-within { border-color: var(--neon-magenta); }
-.toolbar-search:focus-within .search-icon { color: var(--neon-magenta); }
+.header-search:focus-within .search-icon { color: var(--neon-magenta); }
 .search-input {
-  flex: 1; padding: 0; border: none; outline: none;
-  font-size: 14px; font-family: var(--font-body);
+  width: 160px; padding: 0; border: none; outline: none;
+  font-size: 13px; font-family: var(--font-body);
   color: var(--text-primary);
   background: transparent;
 }
 .search-input::placeholder { color: var(--text-muted); }
 .search-clear {
   background: none; border: none; color: var(--text-muted);
-  font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1;
-  flex-shrink: 0;
+  font-size: 14px; cursor: pointer; padding: 0;
 }
 .search-clear:hover { color: var(--neon-magenta); }
 .search-info { margin-top: 12px; font-size: 14px; color: var(--text-secondary); }

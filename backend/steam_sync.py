@@ -7,7 +7,7 @@ import logging
 import subprocess
 from datetime import date, datetime, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
-from database import SessionLocal, game_tag_assoc, Game, Tag, DailyTopSeller, DailyDiscovery
+from database import SessionLocal, game_tag_assoc, Game, Tag, DailyTopSeller
 from tag_translations import translate_tag
 
 logger = logging.getLogger(__name__)
@@ -199,7 +199,6 @@ def sync_from_api() -> tuple[list[dict], list[dict]]:
             for item in data.get(cat, {}).get("items", []):
                 parsed = _parse_item(item)
                 if parsed:
-                    parsed["category"] = cat
                     discovery.append(parsed)
 
         logger.info(f"[API] 热销 {len(top_sellers)} + 发现 {len(discovery)} 款")
@@ -307,9 +306,7 @@ def sync_steam_data():
             top_seller_ids.add(item["appid"])
 
         # 追加 API 发现类游戏（new_releases/specials/coming_soon）—— 仅入库，不写排名
-        discovery_categories = {}
         for item in api_discovery:
-            discovery_categories[item["appid"]] = item.get("category", "")
             if item["appid"] not in merged:
                 merged[item["appid"]] = item
                 ranked_order.append(item["appid"])
@@ -418,22 +415,12 @@ def sync_steam_data():
                 if not existing_today:
                     db.add(DailyTopSeller(game_id=gid, rank=rank, date=today))
 
-            # 发现类游戏写入 DailyDiscovery
-            if gid and appid in discovery_categories:
-                existing_disc = db.query(DailyDiscovery).filter(
-                    DailyDiscovery.game_id == gid, DailyDiscovery.date == today
-                ).first()
-                if not existing_disc:
-                    db.add(DailyDiscovery(
-                        game_id=gid, category=discovery_categories[appid], date=today
-                    ))
-
         db.commit()
         from games import clear_hot_cache
         clear_hot_cache()
         from recommender import clear_recommender_cache
         clear_recommender_cache()
-        logger.info(f"同步完成: 新增 {synced}, 更新 {updated}, 下载图片 {img_ok}, 共 {len(items)} 款, 发现类 {len(discovery_categories)} 款")
+        logger.info(f"同步完成: 新增 {synced}, 更新 {updated}, 下载图片 {img_ok}, 共 {len(items)} 款")
     except Exception as e:
         db.rollback()
         logger.error(f"同步失败: {e}")

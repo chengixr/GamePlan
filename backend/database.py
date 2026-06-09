@@ -118,16 +118,6 @@ class SteamRanking(Base):
     rank = Column(Integer, nullable=False)
     snapshot_time = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
-class DailyDiscovery(Base):
-    """每日发现类游戏（new_releases / specials / coming_soon）"""
-    __tablename__ = "daily_discovery"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(Integer, ForeignKey("games.id"), nullable=False)
-    category = Column(String(32), default="")
-    date = Column(Date, nullable=False)
-    snapshot_time = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_columns()

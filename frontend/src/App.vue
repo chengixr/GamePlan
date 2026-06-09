@@ -5,15 +5,19 @@
     <main class="main-content">
       <router-view />
     </main>
+    <Toast ref="toastRef" />
   </div>
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { ref, onMounted, provide } from 'vue'
 import NavBar from './components/NavBar.vue'
+import Toast from './components/Toast.vue'
 import { useAuthStore } from './stores/auth'
 
 const authStore = useAuthStore()
+const toastRef = ref(null)
+provide('toast', toastRef)
 
 onMounted(() => {
   authStore.checkAuth()

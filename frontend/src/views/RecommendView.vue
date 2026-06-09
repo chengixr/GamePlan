@@ -19,7 +19,10 @@
     </div>
 
     <template v-else>
-      <GameCard v-for="game in store.recGames" :key="game.id" :game="game" />
+      <div class="rec-item" v-for="game in store.recGames" :key="game.id">
+        <GameCard :game="game" />
+        <button class="dismiss-btn" title="不感兴趣" @click="onDismiss(game.id)">&#10005;</button>
+      </div>
 
       <div v-if="store.recGames.length === 0 && !loading" class="empty-state">
         <div class="empty-icon">&#9733;</div>
@@ -37,13 +40,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, inject, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import GameCard from '../components/GameCard.vue'
 import { useAuthStore } from '../stores/auth'
 import { useGamesStore } from '../stores/games'
+import { api } from '../api'
 
 const auth = useAuthStore()
 const store = useGamesStore()
+const toast = inject('toast')
 const pageSize = 20
 const loading = ref(true)  // 初始为 true，避免闪现"评分不足"
 
@@ -51,6 +56,17 @@ const sentinel = ref(null)
 let observer = null
 
 const hasMore = computed(() => store.recGames.length < store.recTotal)
+
+async function onDismiss(gameId) {
+  try {
+    await api.dismissGame(gameId)
+    store.recGames = store.recGames.filter(g => g.id !== gameId)
+    store.recTotal = Math.max(0, store.recTotal - 1)
+    toast?.value?.info('已移除，将减少此类推荐')
+  } catch {
+    toast?.value?.error('操作失败')
+  }
+}
 
 function setupObserver() {
   if (observer) observer.disconnect()
@@ -119,6 +135,18 @@ onBeforeUnmount(() => {
   color: var(--neon-amber);
   font-weight: 500;
 }
+
+/* 推荐项 + 不感兴趣 */
+.rec-item { position: relative; }
+.dismiss-btn {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px; color: var(--text-muted); font-size: 14px;
+  cursor: pointer; transition: all 0.15s; opacity: 0;
+}
+.rec-item:hover .dismiss-btn { opacity: 1; }
+.dismiss-btn:hover { color: var(--neon-magenta); border-color: var(--neon-magenta); }
 
 .scroll-sentinel {
   display: flex; justify-content: center; align-items: center;

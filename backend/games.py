@@ -183,6 +183,25 @@ def recommended(
         "rec_explanation": rec_explanation,
     }
 
+
+@router.post("/{game_id}/dismiss")
+def dismiss_game(
+    game_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """标记游戏为不感兴趣（写入推荐历史以降低未来推荐权重）"""
+    from database import RecommendationHistory
+    existing = db.query(RecommendationHistory).filter(
+        RecommendationHistory.user_id == current_user.id,
+        RecommendationHistory.game_id == game_id,
+    ).first()
+    if not existing:
+        db.add(RecommendationHistory(user_id=current_user.id, game_id=game_id))
+        db.commit()
+    return {"status": "ok"}
+
+
 @router.get("/top-sellers/history")
 def top_sellers_history(
     target_date: str = Query(..., description="日期 YYYY-MM-DD"),

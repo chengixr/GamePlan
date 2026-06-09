@@ -12,6 +12,19 @@
         </button>
       </div>
       <p class="page-subtitle" v-if="!isHistoryMode">实时同步 · 每日更新 · 为你发现好游戏</p>
+
+      <!-- 标签筛选 -->
+      <div class="tag-filters" v-if="!isHistoryMode && tags.length > 0">
+        <button
+          class="tag-chip" :class="{ active: activeTag === '' }"
+          @click="activeTag = ''"
+        >全部</button>
+        <button
+          v-for="t in tags" :key="t.id"
+          class="tag-chip" :class="{ active: activeTag === t.name }"
+          @click="activeTag = t.name"
+        >{{ t.name }}</button>
+      </div>
     </header>
 
     <!-- 游戏列表 -->
@@ -88,6 +101,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import GameCard from '../components/GameCard.vue'
 import { useGamesStore } from '../stores/games'
 import { useAuthStore } from '../stores/auth'
+import { api } from '../api'
 
 const PAGE_SIZE = 20
 const store = useGamesStore()
@@ -98,6 +112,8 @@ const loadingMore = ref(false)
 const sidebarOpen = ref(false)
 const isHistoryMode = ref(false)
 const historyDate = ref('')
+const tags = ref([])
+const activeTag = ref('')
 
 // 日历
 const now = new Date()
@@ -130,9 +146,11 @@ const calDays = computed(() => {
   return cells
 })
 
-const displayGames = computed(() =>
-  isHistoryMode.value ? store.historyGames : store.hotGames
-)
+const displayGames = computed(() => {
+  const games = isHistoryMode.value ? store.historyGames : store.hotGames
+  if (!activeTag.value) return games
+  return games.filter(g => g.tags.includes(activeTag.value))
+})
 const total = computed(() =>
   isHistoryMode.value ? store.historyTotal : store.hotTotal
 )
@@ -197,6 +215,9 @@ async function loadHistoryDate(d) {
 
 // 初始化
 onMounted(async () => {
+  // 加载标签列表用于筛选
+  api.getTags().then(data => { tags.value = data }).catch(() => {})
+
   const hasCache = store.hotGames.length > 0
   isFirstLoad.value = !hasCache
 
@@ -267,6 +288,25 @@ onBeforeUnmount(() => {
   font-size: 14px;
   color: var(--text-muted);
   letter-spacing: 0.5px;
+}
+
+/* 标签筛选 */
+.tag-filters {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 14px;
+}
+.tag-chip {
+  padding: 4px 12px; font-size: 12px; font-weight: 500;
+  background: var(--surface-raised);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 4px; color: var(--text-muted);
+  cursor: pointer; transition: all 0.15s;
+  font-family: var(--font-body);
+}
+.tag-chip:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.15); }
+.tag-chip.active {
+  color: var(--void); background: var(--neon-cyan);
+  border-color: var(--neon-cyan); font-weight: 600;
 }
 
 /* 历史记录按钮 */

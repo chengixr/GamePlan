@@ -31,9 +31,9 @@ def migrate_headers(db, dry_run=False):
         appid = game.steam_app_id
         src = os.path.join(IMAGES_DIR, f"{appid}.jpg")
 
-        # 检查是否已有处理后的文件
+        # 检查是否已有处理后的文件（本地路径非 CDN）
         h_urls = header_urls(appid, "webp")
-        if h_urls["small"]:
+        if h_urls["small"] and h_urls["small"].startswith("/static/"):
             if not dry_run:
                 game.image_url = h_urls["small"]
                 game.image_large = h_urls["large"]

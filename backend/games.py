@@ -44,6 +44,35 @@ def list_tags(db: Session = Depends(get_db)):
     tags = db.query(Tag).all()
     return [{"id": t.id, "name": t.name} for t in tags]
 
+
+@router.get("/search", response_model=PaginatedResponse)
+def search_games(
+    q: str = Query(..., min_length=1, description="搜索关键词"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """按游戏名称搜索（中英文）"""
+    keyword = f"%{q}%"
+    base = db.query(Game).options(joinedload(Game.tags)).filter(
+        (Game.name.like(keyword)) | (Game.name_cn.like(keyword))
+    )
+    total = base.count()
+    games = base.order_by(Game.name).offset((page - 1) * page_size).limit(page_size).all()
+    items = []
+    for game in games:
+        items.append(GameResponse(
+            id=game.id, steam_app_id=game.steam_app_id,
+            name=game.name, name_cn=game.name_cn or "",
+            description=_sanitize_html(game.description or ""),
+            image_url=game.image_url or "",
+            image_large=game.image_large or game.image_url or "",
+            fallback_image=game.fallback_image or "",
+            price=game.price or "",
+            tags=[t.name for t in game.tags],
+        ))
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
 @router.get("/top-sellers", response_model=PaginatedResponse)
 def top_sellers(
     page: int = Query(1, ge=1),
@@ -103,7 +132,7 @@ def top_sellers(
     return PaginatedResponse(items=paged, total=total, page=page, page_size=page_size)
 
 
-@router.get("/recommended", response_model=PaginatedResponse)
+@router.get("/recommended")
 def recommended(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -138,7 +167,21 @@ def recommended(
                 tags=[t.name for t in game.tags],
             ))
     db.commit()
-    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
+    # 推荐解释：列出影响推荐的高分游戏
+    from database import Rating
+    high_rated = db.query(Rating.game_id).filter(
+        Rating.user_id == current_user.id, Rating.score >= 4
+    ).order_by(Rating.score.desc()).limit(3).all()
+    hr_ids = [r[0] for r in high_rated]
+    hr_games = db.query(Game.id, Game.name, Game.name_cn).filter(Game.id.in_(hr_ids)).all()
+    hr_map = {g.id: g.name_cn or g.name for g in hr_games}
+    rec_explanation = [hr_map[gid] for gid in hr_ids if gid in hr_map]
+
+    return {
+        "items": items, "total": total, "page": page, "page_size": page_size,
+        "rec_explanation": rec_explanation,
+    }
 
 @router.get("/top-sellers/history")
 def top_sellers_history(

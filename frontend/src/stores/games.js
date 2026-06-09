@@ -10,6 +10,7 @@ export const useGamesStore = defineStore('games', {
     recGames: [],
     recTotal: 0,
     recPage: 1,
+    recExplanation: [],
     currentGame: null,
     myRatings: {},
     historyDates: [],
@@ -40,6 +41,7 @@ export const useGamesStore = defineStore('games', {
         this.recGames.push(...data.items)
       } else {
         this.recGames = data.items
+        this.recExplanation = data.rec_explanation || []
       }
       this.recTotal = data.total
       this.recPage = page

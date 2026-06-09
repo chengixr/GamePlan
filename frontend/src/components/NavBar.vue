@@ -6,6 +6,7 @@
     </router-link>
     <div class="nav-links">
       <router-link to="/hot" class="nav-link">热销榜</router-link>
+      <router-link to="/discover" class="nav-link">发现</router-link>
       <router-link v-if="auth.user" to="/recommend" class="nav-link">推荐</router-link>
       <router-link v-if="auth.user" to="/favorites" class="nav-link">收藏</router-link>
     </div>

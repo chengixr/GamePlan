@@ -46,6 +46,7 @@ export const api = {
   me: () => request('/auth/me'),
   gameDetail: (id) => request('/games/' + id),
   topSellers: (page = 1, pageSize = 20) => request(`/games/top-sellers?page=${page}&page_size=${pageSize}`),
+  discovery: (page = 1, pageSize = 20) => request(`/games/discovery?page=${page}&page_size=${pageSize}`),
   recommended: (page = 1, pageSize = 20) => request(`/games/recommended?page=${page}&page_size=${pageSize}`),
   rate: (gameId, score) => request('/ratings/', { method: 'POST', body: JSON.stringify({ game_id: gameId, score }) }),
   myRatings: () => request('/ratings/mine'),

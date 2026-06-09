@@ -187,29 +187,29 @@ onBeforeUnmount(() => {
 }
 /* 搜索框 */
 .header-search {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 14px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 12px; flex-shrink: 0;
   background: var(--surface);
   border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 8px;
+  border-radius: 6px;
   transition: border-color 0.2s;
 }
 .header-search:focus-within { border-color: var(--neon-magenta); }
 .search-icon {
-  width: 16px; height: 16px; color: var(--text-muted); flex-shrink: 0;
+  width: 14px; height: 14px; color: var(--text-muted); flex-shrink: 0;
   transition: color 0.2s;
 }
 .header-search:focus-within .search-icon { color: var(--neon-magenta); }
 .search-input {
   width: 160px; padding: 0; border: none; outline: none;
-  font-size: 13px; font-family: var(--font-body);
+  font-size: 12px; font-family: var(--font-body);
   color: var(--text-primary);
   background: transparent;
 }
 .search-input::placeholder { color: var(--text-muted); }
 .search-clear {
   background: none; border: none; color: var(--text-muted);
-  font-size: 14px; cursor: pointer; padding: 0;
+  font-size: 12px; cursor: pointer; padding: 0;
 }
 .search-clear:hover { color: var(--neon-magenta); }
 .search-info { margin-top: 12px; font-size: 14px; color: var(--text-secondary); }

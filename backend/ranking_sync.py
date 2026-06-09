@@ -8,40 +8,13 @@ import urllib.request as ur
 import logging
 from datetime import datetime, timezone
 from database import SessionLocal, Game, SteamRanking, Tag, game_tag_assoc
+from steam_utils import (
+    get_proxy, fetch_json, fetch_html, curl_download, STEAM_IMG_CDN, HEADERS
+)
 
 logger = logging.getLogger(__name__)
 IMAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "images")
-STEAM_IMG_CDN = "https://cdn.cloudflare.steamstatic.com/steam/apps"
 SCREENSHOTS_DIR = os.path.join(IMAGES_DIR, "screenshots")
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-
-
-def _get_proxy() -> str | None:
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "config.json")
-    try:
-        with open(config_path) as f:
-            return json.load(f).get("proxy", {}).get("https") or None
-    except Exception:
-        return None
-
-
-def _make_opener():
-    proxy = _get_proxy()
-    return ur.build_opener(ur.ProxyHandler({"https": proxy, "http": proxy})) if proxy else None
-
-
-def _fetch_json(path: str, timeout: int = 20) -> dict:
-    opener = _make_opener()
-    req = ur.Request(f"https://store.steampowered.com/api/{path}", headers=HEADERS)
-    resp = (opener.open(req, timeout=timeout) if opener else ur.urlopen(req, timeout=timeout))
-    return json.loads(resp.read())
-
-
-def _fetch_html(url: str, timeout: int = 15) -> str:
-    opener = _make_opener()
-    req = ur.Request(url, headers=HEADERS)
-    resp = (opener.open(req, timeout=timeout) if opener else ur.urlopen(req, timeout=timeout))
-    return resp.read().decode("utf-8", errors="ignore")
 
 
 def _local_image_url(appid: int) -> str:
@@ -52,30 +25,12 @@ def _local_image_path(appid: int) -> str:
     return os.path.join(IMAGES_DIR, f"{appid}.jpg")
 
 
-def _curl_download(url: str, output_path: str, timeout: int = 12) -> bool:
-    import subprocess
-    proxy = _get_proxy()
-    cmd = [
-        "curl", "-s", "-L", "-o", output_path,
-        "--max-time", str(timeout),
-        "-H", f"User-Agent: {HEADERS['User-Agent']}",
-    ]
-    if proxy:
-        cmd.extend(["--proxy", proxy])
-    cmd.append(url)
-    try:
-        result = subprocess.run(cmd, capture_output=True, timeout=timeout + 5)
-        return result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0
-    except Exception:
-        return False
-
-
 def _download_image(appid: int, url: str = None) -> bool:
     local_path = _local_image_path(appid)
     if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
         return True
     download_url = url or f"{STEAM_IMG_CDN}/{appid}/header.jpg"
-    return _curl_download(download_url, local_path)
+    return curl_download(download_url, local_path)
 
 
 def _download_screenshots(appid: int, steam_urls: list[str]) -> list[str]:
@@ -85,7 +40,7 @@ def _download_screenshots(appid: int, steam_urls: list[str]) -> list[str]:
         if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
             local_urls.append(f"/static/images/screenshots/{appid}_{idx}.jpg")
             continue
-        if _curl_download(url, local_path, timeout=15):
+        if curl_download(url, local_path, timeout=15):
             local_urls.append(f"/static/images/screenshots/{appid}_{idx}.jpg")
         else:
             local_urls.append(url)
@@ -95,7 +50,7 @@ def _download_screenshots(appid: int, steam_urls: list[str]) -> list[str]:
 def _fetch_game_details(appid: int) -> dict | None:
     """获取单个游戏的详情数据，用于创建库记录。"""
     try:
-        data = _fetch_json(f"appdetails?appids={appid}&cc=cn&l=schinese", timeout=20)
+        data = fetch_json(f"appdetails?appids={appid}&cc=cn&l=schinese", timeout=20)
         gd = data.get(str(appid), {}).get("data", {})
         if not gd.get("name"):
             return None
@@ -134,7 +89,7 @@ def sync_rankings():
         appids = []
         titles = []
         seen = set()
-        html = _fetch_html(
+        html = fetch_html(
             "https://store.steampowered.com/search/?filter=topsellers&cc=cn&page=0&count=100",
             timeout=15,
         )

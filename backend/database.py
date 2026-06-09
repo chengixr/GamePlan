@@ -121,6 +121,7 @@ class SteamRanking(Base):
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
+    _ensure_indexes()
 
 
 def _migrate_columns():
@@ -136,4 +137,29 @@ def _migrate_columns():
         for col_name, col_def in migrations:
             if col_name not in existing:
                 conn.execute(text(f"ALTER TABLE games ADD COLUMN {col_name} {col_def}"))
+        conn.commit()
+
+
+def _ensure_indexes():
+    """创建缺失的数据库索引（幂等，已存在则跳过）"""
+    from sqlalchemy import text, inspect
+    inspector = inspect(engine)
+    with engine.connect() as conn:
+        # 收集已有索引名
+        existing_idxs = set()
+        for table in inspector.get_table_names():
+            for idx in inspector.get_indexes(table):
+                existing_idxs.add(idx["name"])
+
+        indexes = [
+            ("idx_ratings_user_id", "CREATE INDEX IF NOT EXISTS idx_ratings_user_id ON ratings(user_id)"),
+            ("idx_ratings_game_id", "CREATE INDEX IF NOT EXISTS idx_ratings_game_id ON ratings(game_id)"),
+            ("idx_daily_top_sellers_date", "CREATE INDEX IF NOT EXISTS idx_daily_top_sellers_date ON daily_top_sellers(date)"),
+            ("idx_rec_history_user_id", "CREATE INDEX IF NOT EXISTS idx_rec_history_user_id ON recommendation_history(user_id)"),
+            ("idx_favorites_user_id", "CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id)"),
+            ("idx_games_created_at", "CREATE INDEX IF NOT EXISTS idx_games_created_at ON games(created_at)"),
+        ]
+        for name, sql in indexes:
+            if name not in existing_idxs:
+                conn.execute(text(sql))
         conn.commit()

@@ -1,19 +1,17 @@
-import urllib.request as ur
 import json
 import re
 import time
 import os
 import logging
-import subprocess
 from datetime import date, datetime, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from database import SessionLocal, game_tag_assoc, Game, Tag, DailyTopSeller
 from tag_translations import translate_tag
+from steam_utils import (
+    get_proxy, fetch_json, fetch_html, curl_download, STEAM_IMG_CDN, STEAM_API, HEADERS
+)
 
 logger = logging.getLogger(__name__)
-STEAM_API = "https://store.steampowered.com/api"
-STEAM_IMG_CDN = "https://cdn.cloudflare.steamstatic.com/steam/apps"
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"}
 
 IMAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "images")
 os.makedirs(IMAGES_DIR, exist_ok=True)
@@ -24,52 +22,11 @@ os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
 # ==================== 工具函数 ====================
 
-def _get_proxy() -> str | None:
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "config.json")
-    try:
-        with open(config_path) as f:
-            return json.load(f).get("proxy", {}).get("https") or None
-    except Exception:
-        return None
-
-def _make_opener():
-    proxy = _get_proxy()
-    return ur.build_opener(ur.ProxyHandler({"https": proxy, "http": proxy})) if proxy else None
-
-def _fetch_json(path: str, timeout: int = 20) -> dict:
-    opener = _make_opener()
-    req = ur.Request(f"{STEAM_API}/{path}", headers=HEADERS)
-    resp = (opener.open(req, timeout=timeout) if opener else ur.urlopen(req, timeout=timeout))
-    return json.loads(resp.read())
-
-def _fetch_html(url: str, timeout: int = 15) -> str:
-    opener = _make_opener()
-    req = ur.Request(url, headers=HEADERS)
-    resp = (opener.open(req, timeout=timeout) if opener else ur.urlopen(req, timeout=timeout))
-    return resp.read().decode("utf-8", errors="ignore")
-
 def _local_image_url(appid: int) -> str:
     return f"/static/images/{appid}.jpg"
 
 def _local_image_path(appid: int) -> str:
     return os.path.join(IMAGES_DIR, f"{appid}.jpg")
-
-def _curl_download(url: str, output_path: str, timeout: int = 12) -> bool:
-    """使用 curl 下载文件，支持代理"""
-    proxy = _get_proxy()
-    cmd = [
-        "curl", "-s", "-L", "-o", output_path,
-        "--max-time", str(timeout),
-        "-H", f"User-Agent: {HEADERS['User-Agent']}",
-    ]
-    if proxy:
-        cmd.extend(["--proxy", proxy])
-    cmd.append(url)
-    try:
-        result = subprocess.run(cmd, capture_output=True, timeout=timeout + 5)
-        return result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0
-    except (subprocess.SubprocessError, OSError):
-        return False
 
 
 def _download_and_process_header(appid: int, url: str = None) -> tuple[str, str, str]:
@@ -87,7 +44,7 @@ def _download_and_process_header(appid: int, url: str = None) -> tuple[str, str,
     # 下载原图
     tmp_path = os.path.join(IMAGES_DIR, f"{appid}_tmp.jpg")
     download_url = url or f"{STEAM_IMG_CDN}/{appid}/header.jpg"
-    if not _curl_download(download_url, tmp_path):
+    if not curl_download(download_url, tmp_path):
         fallback = cdn_fallback(appid)
         return fallback, fallback, fallback
 
@@ -112,7 +69,7 @@ def _download_image(appid: int, url: str = None) -> bool:
     if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
         return True
     download_url = url or f"{STEAM_IMG_CDN}/{appid}/header.jpg"
-    return _curl_download(download_url, local_path)
+    return curl_download(download_url, local_path)
 
 
 def _download_and_process_screenshots(appid: int, steam_urls: list[str]) -> list[dict]:
@@ -130,7 +87,7 @@ def _download_and_process_screenshots(appid: int, steam_urls: list[str]) -> list
     results = []
     for idx, url in enumerate(steam_urls[:3]):  # 最多 3 张
         tmp_path = os.path.join(SCREENSHOTS_DIR, f"{appid}_{idx}_tmp.jpg")
-        if not _curl_download(url, tmp_path, timeout=15):
+        if not curl_download(url, tmp_path, timeout=15):
             continue
         result = process_screenshot(appid, idx, tmp_path)
         if os.path.exists(tmp_path):
@@ -156,7 +113,7 @@ def _download_screenshots(appid: int, steam_urls: list[str]) -> list[str]:
         if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
             local_urls.append(f"/static/images/screenshots/{appid}_{idx}.jpg")
             continue
-        if _curl_download(url, local_path, timeout=15):
+        if curl_download(url, local_path, timeout=15):
             local_urls.append(f"/static/images/screenshots/{appid}_{idx}.jpg")
         else:
             local_urls.append(url)
@@ -171,7 +128,7 @@ def sync_from_api() -> tuple[list[dict], list[dict]]:
     top_sellers = []
     discovery = []
     try:
-        data = _fetch_json("featuredcategories", timeout=20)
+        data = fetch_json("featuredcategories", timeout=20)
         seen = set()
 
         def _parse_item(item):
@@ -216,7 +173,7 @@ def _scrape_steam_search(filter_type: str, pages: int = 3) -> list[dict]:
     for page in range(pages):
         try:
             url = f"https://store.steampowered.com/search/?filter={filter_type}&cc=cn&page={page}"
-            html = _fetch_html(url, timeout=15)
+            html = fetch_html(url, timeout=15)
             new_count = 0
             for m in re.finditer(r'data-ds-appid="(\d+)"', html):
                 appid = int(m.group(1))
@@ -249,7 +206,7 @@ def sync_from_steamcharts() -> list[dict]:
     """从 SteamCharts.com 获取热门游戏 + 玩家人数"""
     items = []
     try:
-        html = _fetch_html("https://steamcharts.com/top", timeout=15)
+        html = fetch_html("https://steamcharts.com/top", timeout=15)
         for m in re.finditer(r'<a href="/app/(\d+)[^"]*">([^<]+)</a>', html):
             appid = int(m.group(1))
             name = m.group(2).strip()
@@ -429,7 +386,7 @@ def sync_steam_data():
 
 def _try_fetch_details(appid: int) -> dict | None:
     try:
-        data = _fetch_json(f"appdetails?appids={appid}&cc=cn&l=schinese", timeout=20)
+        data = fetch_json(f"appdetails?appids={appid}&cc=cn&l=schinese", timeout=20)
         gd = data.get(str(appid), {}).get("data", {})
         if not gd.get("name"):
             return None
@@ -476,9 +433,11 @@ def get_job_status() -> dict:
 
 def _fetch_user_reviews(appid: int) -> str:
     """获取 Steam 用户评价（12条中文）"""
+    import urllib.request as ur
     try:
         url = f"https://store.steampowered.com/appreviews/{appid}?json=1&num_per_page=12&language=schinese&review_type=all"
-        opener = _make_opener()
+        proxy = get_proxy()
+        opener = ur.build_opener(ur.ProxyHandler({"https": proxy, "http": proxy})) if proxy else None
         req = ur.Request(url, headers=HEADERS)
         resp = (opener.open(req, timeout=15) if opener else ur.urlopen(req, timeout=15))
         data = json.loads(resp.read())

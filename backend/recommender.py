@@ -3,6 +3,7 @@ import json
 import random
 import threading
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select as sa_select
 from database import Rating, Game, DailyTopSeller, Favorite, RecommendationHistory
 from tag_library import get_tag_weight
 
@@ -40,19 +41,13 @@ def _weighted_jaccard(tags_a: dict[str, float], tags_b: dict[str, float]) -> flo
 _rec_cache = {}
 _rec_cache_lock = threading.Lock()
 
-# 评分数据缓存（2 分钟，减少同步期间的 DB 压力）
-_ratings_cache = {}
-_ratings_cache_lock = threading.Lock()
-
 def clear_recommender_cache():
     """同步后清除缓存"""
-    global _tag_cache, _rec_cache, _ratings_cache
+    global _tag_cache, _rec_cache
     with _tag_cache_lock:
         _tag_cache.clear()
     with _rec_cache_lock:
         _rec_cache.clear()
-    with _ratings_cache_lock:
-        _ratings_cache.clear()
 
 
 def _excluded_ids(db: Session, user_id: int) -> tuple[set[int], set[int]]:
@@ -118,22 +113,32 @@ def get_recommendations(db: Session, user_id: int) -> tuple[int, list[int]]:
     game_tag_sets = _get_game_tag_sets(db)
     freshness = _freshness_boost(db)
 
-    # 评分数据缓存读取（存储原始元组避免 DetachedInstanceError）
-    now = datetime.now()
-    with _ratings_cache_lock:
-        if _ratings_cache.get("expires", now) > now:
-            rating_rows = _ratings_cache["data"]
-        else:
-            rating_rows = [(r.user_id, r.game_id, r.score) for r in db.query(Rating).all()]
-            _ratings_cache["data"] = rating_rows
-            _ratings_cache["expires"] = now + timedelta(minutes=2)
-
-    user_scores = {}
-    for uid, gid, score in rating_rows:
-        user_scores.setdefault(uid, {})[gid] = score
-
-    current_scores = user_scores.get(user_id, {})
+    # 获取当前用户评分
+    current_ratings = db.query(Rating).filter(Rating.user_id == user_id).all()
+    current_scores = {r.game_id: r.score for r in current_ratings}
     rated_game_ids = set(current_scores.keys())
+
+    # 协同过滤：只查询与当前用户有共同评分游戏的用户（大幅减少数据量）
+    from sqlalchemy import distinct
+    cf_user_ids = set()
+    if rated_game_ids:
+        cf_rows = db.query(distinct(Rating.user_id)).filter(
+            Rating.game_id.in_(rated_game_ids),
+            Rating.user_id != user_id,
+        ).limit(200).all()
+        cf_user_ids = {r[0] for r in cf_rows}
+
+        # 获取相似用户的评分（仅高分 >= 4，减少数据量）
+        cf_ratings = db.query(Rating).filter(
+            Rating.user_id.in_(cf_user_ids),
+            Rating.score >= 4,
+        ).all()
+
+        user_scores = {user_id: current_scores}
+        for r in cf_ratings:
+            user_scores.setdefault(r.user_id, {})[r.game_id] = r.score
+    else:
+        user_scores = {user_id: current_scores}
 
     # === 标签相似度（正向） ===
     high_rated = [gid for gid, s in current_scores.items() if s >= 4]
@@ -281,16 +286,21 @@ def get_similar_games(db: Session, game_id: int, limit: int = 6) -> list[int]:
         g_tags = {t.name: get_tag_weight(t.name) for t in g.tags}
         tag_scores[g.id] = _weighted_jaccard(target_tags, g_tags)
 
-    # 协同过滤：找到评分过当前游戏的用户，看他们还喜欢什么
-    all_ratings = db.query(Rating).all()
-    user_scores = {}
-    for r in all_ratings:
-        user_scores.setdefault(r.user_id, {})[r.game_id] = r.score
-
+    # 协同过滤：找到评分过当前游戏且高分的用户，看他们还喜欢什么
     cf_scores = {}
+    similar_users_subq = sa_select(Rating.user_id).where(
+        Rating.game_id == game_id, Rating.score >= 4
+    ).scalar_subquery()
+    liked_by = db.query(Rating.user_id, Rating.game_id, Rating.score).filter(
+        Rating.user_id.in_(similar_users_subq)
+    ).all()
+
+    user_scores = {}
+    for uid, gid, s in liked_by:
+        user_scores.setdefault(uid, {})[gid] = s
+
     for uid, scores in user_scores.items():
-        if game_id in scores and scores[game_id] >= 4:
-            for gid, s in scores.items():
+        for gid, s in scores.items():
                 if s >= 4 and gid != game_id:
                     cf_scores[gid] = cf_scores.get(gid, 0) + 1
 

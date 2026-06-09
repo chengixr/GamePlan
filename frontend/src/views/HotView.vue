@@ -13,6 +13,14 @@
       </div>
       <p class="page-subtitle" v-if="!isHistoryMode">实时同步 · 每日更新 · 为你发现好游戏</p>
 
+      <!-- 搜索框 -->
+      <div class="search-bar" v-if="!isHistoryMode">
+        <form @submit.prevent="onSearch">
+          <input v-model="searchQuery" class="search-input" placeholder="搜索游戏..." />
+        </form>
+        <button v-if="searchMode" class="clear-search" @click="clearSearch">&#10005; 清除搜索</button>
+      </div>
+
       <!-- 标签筛选 -->
       <div class="tag-filters" v-if="!isHistoryMode && tags.length > 0">
         <button
@@ -114,6 +122,11 @@ const isHistoryMode = ref(false)
 const historyDate = ref('')
 const tags = ref([])
 const activeTag = ref('')
+const searchQuery = ref('')
+const searchMode = ref(false)
+const searchResults = ref([])
+const searchTotal = ref(0)
+const searching = ref(false)
 
 // 日历
 const now = new Date()
@@ -147,6 +160,7 @@ const calDays = computed(() => {
 })
 
 const displayGames = computed(() => {
+  if (searchMode.value) return searchResults.value
   const games = isHistoryMode.value ? store.historyGames : store.hotGames
   if (!activeTag.value) return games
   return games.filter(g => g.tags.includes(activeTag.value))
@@ -168,6 +182,26 @@ function setupObserver() {
     }
   }, { rootMargin: '400px' })
   if (sentinel.value) observer.observe(sentinel.value)
+}
+
+async function onSearch() {
+  const q = searchQuery.value.trim()
+  if (!q) { clearSearch(); return }
+  searching.value = true
+  try {
+    const data = await api.search(q, 1, 20)
+    searchResults.value = data.items
+    searchTotal.value = data.total
+    searchMode.value = true
+  } catch { return }
+  finally { searching.value = false }
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  searchMode.value = false
+  searchResults.value = []
+  searchTotal.value = 0
 }
 
 async function loadMore() {
@@ -289,6 +323,25 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   letter-spacing: 0.5px;
 }
+
+/* 搜索框 */
+.search-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.search-input {
+  width: 220px; padding: 6px 12px;
+  font-size: 13px; font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px; outline: none;
+  transition: border-color 0.2s;
+}
+.search-input:focus { border-color: var(--neon-cyan); }
+.search-input::placeholder { color: var(--text-muted); }
+.clear-search {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 12px; cursor: pointer; padding: 4px 8px;
+}
+.clear-search:hover { color: var(--neon-magenta); }
 
 /* 标签筛选 */
 .tag-filters {

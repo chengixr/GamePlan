@@ -11,6 +11,14 @@
         </template>
         <template v-else>基于你的评分偏好 · 混合推荐算法</template>
       </p>
+
+      <!-- 搜索框 -->
+      <div class="search-bar">
+        <form @submit.prevent="onSearch">
+          <input v-model="searchQuery" class="search-input" placeholder="搜索游戏..." />
+        </form>
+        <button v-if="searchMode" class="clear-search" @click="clearSearch">&#10005; 清除</button>
+      </div>
     </header>
 
     <div v-if="!auth.user" class="empty-state">
@@ -19,6 +27,17 @@
     </div>
 
     <template v-else>
+      <!-- 搜索结果模式 -->
+      <template v-if="searchMode">
+        <p class="search-info">"{{ searched }}" 共 {{ searchTotal }} 款结果</p>
+        <GameCard v-for="game in searchResults" :key="game.id" :game="game" :show-rating="!!auth.user" />
+        <div v-if="searchResults.length === 0 && !searching" class="empty-state">
+          <p>未找到相关游戏</p>
+        </div>
+      </template>
+
+      <!-- 推荐模式 -->
+      <template v-else>
       <div class="rec-item" v-for="game in store.recGames" :key="game.id">
         <GameCard :game="game" />
         <button class="dismiss-btn" title="不感兴趣" @click="onDismiss(game.id)">&#10005;</button>
@@ -35,6 +54,7 @@
         <span v-if="loading" class="loading-spinner"></span>
         <span v-else-if="store.recGames.length > 0 && !hasMore" class="end-text">— 已加载全部 —</span>
       </div>
+      </template>
     </template>
   </div>
 </template>
@@ -49,6 +69,12 @@ import { api } from '../api'
 const auth = useAuthStore()
 const store = useGamesStore()
 const toast = inject('toast')
+const searchQuery = ref('')
+const searchMode = ref(false)
+const searchResults = ref([])
+const searchTotal = ref(0)
+const searched = ref('')
+const searching = ref(false)
 const pageSize = 20
 const loading = ref(true)  // 初始为 true，避免闪现"评分不足"
 
@@ -56,6 +82,26 @@ const sentinel = ref(null)
 let observer = null
 
 const hasMore = computed(() => store.recGames.length < store.recTotal)
+
+async function onSearch() {
+  const q = searchQuery.value.trim()
+  if (!q) { clearSearch(); return }
+  searching.value = true
+  try {
+    const data = await api.search(q, 1, 20)
+    searchResults.value = data.items
+    searchTotal.value = data.total
+    searched.value = q
+    searchMode.value = true
+  } catch { return }
+  finally { searching.value = false }
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  searchMode.value = false
+  searchResults.value = []
+}
 
 async function onDismiss(gameId) {
   try {
@@ -135,6 +181,26 @@ onBeforeUnmount(() => {
   color: var(--neon-amber);
   font-weight: 500;
 }
+
+/* 搜索框 */
+.search-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.search-input {
+  width: 220px; padding: 6px 12px;
+  font-size: 13px; font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px; outline: none;
+  transition: border-color 0.2s;
+}
+.search-input:focus { border-color: var(--neon-magenta); }
+.search-input::placeholder { color: var(--text-muted); }
+.clear-search {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 12px; cursor: pointer; padding: 4px 8px;
+}
+.clear-search:hover { color: var(--neon-magenta); }
+.search-info { margin-top: 12px; font-size: 14px; color: var(--text-secondary); }
 
 /* 推荐项 + 不感兴趣 */
 .rec-item { position: relative; }

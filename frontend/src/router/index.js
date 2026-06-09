@@ -6,7 +6,6 @@ const routes = [
   { path: '/login', name: 'Login', component: () => import('../views/LoginView.vue') },
   { path: '/register', name: 'Register', component: () => import('../views/RegisterView.vue') },
   { path: '/hot', name: 'Hot', component: () => import('../views/HotView.vue') },
-  { path: '/search', name: 'Search', component: () => import('../views/SearchView.vue') },
   { path: '/recommend', name: 'Recommend', component: () => import('../views/RecommendView.vue'), meta: { requiresAuth: true } },
   { path: '/favorites', name: 'Favorites', component: () => import('../views/FavoritesView.vue'), meta: { requiresAuth: true } },
   { path: '/profile', name: 'Profile', component: () => import('../views/EditProfile.vue'), meta: { requiresAuth: true } },

@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 import json
 import re
 import threading
-from database import SessionLocal, Game, DailyTopSeller, SteamRanking, Tag
+from database import SessionLocal, Game, DailyTopSeller, SteamRanking, Tag, DailyDiscovery
 from sqlalchemy import func
 from models import GameResponse, PaginatedResponse
 from auth import get_current_user, get_db
@@ -83,6 +83,41 @@ def top_sellers(
     start = (page - 1) * page_size
     paged = all_items[start:start + page_size] if all_items else []
     return PaginatedResponse(items=paged, total=total, page=page, page_size=page_size)
+
+
+@router.get("/discovery", response_model=PaginatedResponse)
+def discovery(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """当日发现类游戏（new_releases / specials / coming_soon）"""
+    today = date.today()
+    total = db.query(DailyDiscovery).filter(DailyDiscovery.date == today).count()
+    entries = (
+        db.query(DailyDiscovery)
+        .filter(DailyDiscovery.date == today)
+        .order_by(DailyDiscovery.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    items = []
+    for entry in entries:
+        game = db.query(Game).options(joinedload(Game.tags)).filter(Game.id == entry.game_id).first()
+        if game:
+            items.append(GameResponse(
+                id=game.id, steam_app_id=game.steam_app_id,
+                name=game.name, name_cn=game.name_cn or "",
+                description=game.description or "",
+                image_url=game.image_url or "",
+                image_large=game.image_large or game.image_url or "",
+                fallback_image=game.fallback_image or "",
+                price=game.price or "",
+                tags=[t.name for t in game.tags],
+            ))
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
 
 @router.get("/recommended", response_model=PaginatedResponse)
 def recommended(

@@ -77,12 +77,11 @@ def _download_and_process_header(appid: int, url: str = None) -> tuple[str, str,
     下载头图 → 管线处理 → 删除原图。
     返回 (small_url, large_url, fallback_url)，默认使用 webp 格式。
     """
-    from image_processor import process_header, header_urls, cdn_fallback, HEADERS_DIR, HEADER_SIZES
+    from image_processor import process_header, header_urls, cdn_fallback
 
-    # 检查处理后的文件是否已存在
-    existing = os.path.join(HEADERS_DIR, f"{appid}_{HEADER_SIZES['small']}w.webp")
-    if os.path.exists(existing) and os.path.getsize(existing) > 0:
-        urls = header_urls(appid, "webp")
+    # 检查处理后的文件是否已存在（支持新旧路径）
+    urls = header_urls(appid, "webp")
+    if urls["small"] and urls["small"].startswith("/static/"):
         return urls["small"], urls["large"], urls["fallback"]
 
     # 下载原图

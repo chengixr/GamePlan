@@ -350,18 +350,34 @@ def sync_steam_data():
                         game.image_url = s
                         game.image_large = l
                         game.fallback_image = f
+
+                    # 更新价格和名称（防止种子数据中错误 App ID 的数据永久保留）
+                    api_price = (details.get("price", "") if details else "") or item["price"]
+                    if api_price:
+                        game.price = api_price
+                    api_name = (details.get("name", "") if details else "") or item.get("name", "")
+                    if api_name and api_name != game.name:
+                        game.name = api_name
+                    if details and details.get("name_cn") and details["name_cn"] != game.name_cn:
+                        game.name_cn = details["name_cn"]
+
                     game.updated_at = datetime.now(timezone.utc)
 
                     # 修复空截图：仅在截图缺失时拉取详情
                     if not game.screenshots or game.screenshots == "[]":
-                        try:
-                            d = _try_fetch_details(game.steam_app_id)
-                            if d and d.get("steam_screenshot_urls"):
+                        d = details if details else None
+                        if not d:
+                            try:
+                                d = _try_fetch_details(game.steam_app_id)
+                            except Exception:
+                                pass
+                        if d and d.get("steam_screenshot_urls"):
+                            try:
                                 ss = _download_and_process_screenshots(game.steam_app_id, d["steam_screenshot_urls"])
                                 if ss:
                                     game.screenshots = json.dumps(ss)
-                        except Exception:
-                            pass
+                            except Exception:
+                                pass
                 gid = game.id if game else None
                 updated += 1
 
@@ -412,14 +428,20 @@ def _try_fetch_details(appid: int) -> dict | None:
 
         # 提取价格（优先人民币）
         price = ""
-        price_overview = gd.get("price_overview", {})
-        if price_overview:
-            final = price_overview.get("final", 0)
-            currency = price_overview.get("currency", "")
-            if final > 0:
-                price = "免费" if final == 0 else (f"¥{final / 100:.2f}" if currency == "CNY" else f"{currency} {final / 100:.2f}")
-            else:
-                price = "免费" if price_overview.get("discount_percent", 0) >= 0 else ""
+        # 先检查 is_free 标记，避免将付费游戏误判为免费
+        if gd.get("is_free", False):
+            price = "免费"
+        else:
+            price_overview = gd.get("price_overview", {})
+            if price_overview:
+                final = price_overview.get("final", 0)
+                currency = price_overview.get("currency", "")
+                if final > 0:
+                    price = f"¥{final / 100:.2f}" if currency == "CNY" else f"{currency} {final / 100:.2f}"
+                else:
+                    # final == 0 但没有 is_free 标记，可能是数据异常，保留空字符串
+                    price = ""
+            # 没有 price_overview 且不是免费游戏，保留空字符串让后续 API 补全
 
         return {
             "name": gd.get("name", ""),

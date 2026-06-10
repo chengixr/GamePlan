@@ -67,12 +67,24 @@ def _fetch_game_details(appid: int) -> dict | None:
 
         name_cn = gd.get("name", "")
 
+        # 提取价格
+        price = ""
+        if gd.get("is_free", False):
+            price = "免费"
+        else:
+            po = gd.get("price_overview", {})
+            if po:
+                final = po.get("final", 0)
+                currency = po.get("currency", "")
+                if final > 0:
+                    price = f"¥{final / 100:.2f}" if currency == "CNY" else f"{currency} {final / 100:.2f}"
+
         return {
             "name": gd.get("name", ""),
             "name_cn": name_cn,
             "description": gd.get("detailed_description", "") or gd.get("short_description", ""),
             "header_image": gd.get("header_image", ""),
-            "price": "",  # 排名同步不拿价格，后续详细同步补
+            "price": price,
             "release_date": gd.get("release_date", {}).get("date", ""),
             "tags": tags,
             "review_summary": json.dumps({"positive": review_positive, "total": total_reviews}),

@@ -30,6 +30,45 @@ cd frontend && npm run build       # 产物在 frontend/dist/
 rm backend/gameplan.db
 ```
 
+## 部署
+
+### 方式一：start.sh（VPS/裸机）
+
+```bash
+./start.sh prod    # 构建前端 + 后台启动 → http://localhost:8000
+```
+
+日志文件：`/tmp/gameplan.log`，进程管理用 `fuser -k 8000/tcp` 停止。
+
+### 方式二：Docker
+
+```bash
+# 构建并启动
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+
+# 停止
+docker compose down
+```
+
+数据持久化在 `gameplan_data` volume，数据库路径 `/app/data/gameplan.db`。
+
+### 环境变量
+
+生产部署通过 `.env` 文件或 `docker-compose.yml` 的 `environment` 注入（不写入 `config.json`，避免密钥泄露）。
+
+| 变量 | 说明 | 必填 |
+|------|------|------|
+| `DEEPSEEK_API_KEY` | DeepSeek API Key | LLM 功能必填 |
+| `LLM_ENABLED` | 启用 LLM 标签提取/中文名生成 | 否，默认 `false` |
+| `SECRET_KEY` | Session 加密密钥 | 推荐 |
+| `BACKEND_PORT` | 后端端口 | 否，默认 `8000` |
+| `BACKEND_HOST` | 监听地址 | 否，默认 `0.0.0.0` |
+
+项目根目录 `.env` 文件由 `backend/config.py` 的 `_load_dotenv()` 自动加载，不覆盖已存在的系统环境变量。`.env` 已在 `.gitignore` 中，不会提交。
+
 ## 架构要点
 
 ### 配置系统
